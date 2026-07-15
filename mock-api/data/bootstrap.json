@@ -1,0 +1,61 @@
+{
+  "userInfo": {
+    "codes": ["*"],
+    "roles": ["R_SUPER", "R_ADMIN"],
+    "routers": [],
+    "menus": [],
+    "user": {
+      "id": 1,
+      "username": "admin",
+      "nickname": "产品经理",
+      "avatar": "",
+      "email": "admin@example.com",
+      "phone": "13800000000",
+      "dashboard": "statistics",
+      "backend_setting": {
+        "mode": "light",
+        "tag": true,
+        "menuCollapse": false,
+        "menuWidth": 230,
+        "layout": "classic",
+        "skin": "mine",
+        "i18n": false,
+        "language": "zh_CN",
+        "animation": "ma-slide-down",
+        "color": "#7166F0",
+        "roundOpen": true,
+        "waterMark": true,
+        "waterContent": "SaiAdmin Mock",
+        "ws": false
+      }
+    }
+  },
+  "dictionaries": {
+    "data_status": [
+      { "label": "启用", "value": 1, "color": "green" },
+      { "label": "停用", "value": 2, "color": "gray" }
+    ],
+    "notice_type": [
+      { "label": "通知", "value": 1, "color": "blue" },
+      { "label": "公告", "value": 2, "color": "orange" }
+    ]
+  },
+  "statistics": {
+    "user": 128,
+    "attach": 356,
+    "login": 864,
+    "operate": 1290
+  },
+  "loginChart": {
+    "login_date": ["07-09", "07-10", "07-11", "07-12", "07-13", "07-14", "07-15"],
+    "login_count": [42, 58, 51, 76, 69, 83, 91]
+  },
+  "notices": [
+    {
+      "id": 1,
+      "title": "SaiAdmin AI 原型项目已初始化",
+      "content": "<p>当前页面数据来自独立 Mock API，后续可在保持 API 契约不变的情况下接入真实后端。</p>",
+      "create_time": "2026-07-15 22:00:00"
+    }
+  ]
+}
