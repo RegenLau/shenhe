@@ -50,6 +50,73 @@
     "login_date": ["07-09", "07-10", "07-11", "07-12", "07-13", "07-14", "07-15"],
     "login_count": [42, 58, 51, 76, 69, 83, 91]
   },
+  "loginLogs": [
+    {
+      "id": 3,
+      "username": "admin",
+      "status": 1,
+      "ip": "127.0.0.1",
+      "ip_location": "本机",
+      "os": "macOS",
+      "browser": "Chrome",
+      "message": "登录成功",
+      "login_time": "2026-07-15 22:31:08"
+    },
+    {
+      "id": 2,
+      "username": "admin",
+      "status": 1,
+      "ip": "127.0.0.1",
+      "ip_location": "本机",
+      "os": "macOS",
+      "browser": "Chrome",
+      "message": "登录成功",
+      "login_time": "2026-07-15 21:58:42"
+    },
+    {
+      "id": 1,
+      "username": "admin",
+      "status": 1,
+      "ip": "127.0.0.1",
+      "ip_location": "本机",
+      "os": "macOS",
+      "browser": "Chrome",
+      "message": "登录成功",
+      "login_time": "2026-07-15 20:46:15"
+    }
+  ],
+  "operationLogs": [
+    {
+      "id": 3,
+      "username": "admin",
+      "service_name": "查看个人中心",
+      "method": "GET",
+      "router": "/usercenter",
+      "ip": "127.0.0.1",
+      "ip_location": "本机",
+      "create_time": "2026-07-15 22:31:12"
+    },
+    {
+      "id": 2,
+      "username": "admin",
+      "service_name": "查看仪表盘",
+      "method": "GET",
+      "router": "/dashboard",
+      "ip": "127.0.0.1",
+      "ip_location": "本机",
+      "create_time": "2026-07-15 22:30:51"
+    },
+    {
+      "id": 1,
+      "username": "admin",
+      "service_name": "登录后台",
+      "method": "POST",
+      "router": "/core/login",
+      "ip": "127.0.0.1",
+      "ip_location": "本机",
+      "create_time": "2026-07-15 22:30:45"
+    }
+  ],
   "notices": [
     {
       "id": 1,

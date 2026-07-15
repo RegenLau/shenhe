@@ -20,6 +20,19 @@ app.use(morgan('dev'))
 const success = (data = {}, message = 'success') => ({ code: 200, message, data })
 const failure = (code, message) => ({ code, message, data: null })
 
+function paginate(items, query = {}) {
+  const page = Math.max(Number(query.page) || 1, 1)
+  const limit = Math.max(Number(query.limit) || 10, 1)
+  const start = (page - 1) * limit
+
+  return {
+    data: items.slice(start, start + limit),
+    total: items.length,
+    current_page: page,
+    per_page: limit
+  }
+}
+
 function captchaImage() {
   const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="96" height="36"><rect width="96" height="36" rx="4" fill="#f2f3f5"/><text x="25" y="24" font-family="Arial" font-size="18" font-weight="700" fill="#165dff">1234</text></svg>'
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
@@ -84,6 +97,14 @@ app.get('/core/system/statistics', (req, res) => {
 
 app.get('/core/system/loginChart', (req, res) => {
   res.json(success(fixtures.loginChart))
+})
+
+app.get('/core/system/getLoginLogList', (req, res) => {
+  res.json(success(paginate(fixtures.loginLogs, req.query)))
+})
+
+app.get('/core/system/getOperationLogList', (req, res) => {
+  res.json(success(paginate(fixtures.operationLogs, req.query)))
 })
 
 app.get('/core/system/notice', (req, res) => {

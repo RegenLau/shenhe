@@ -159,7 +159,7 @@ const columns = reactive([
 
 ## 当前 Mock 缺口
 
-当前 Mock 只覆盖登录、用户启动信息、全量字典、仪表盘统计、登录趋势、公告和清缓存。下列组件一旦启用会请求尚未实现的接口，必须先按 [`feature-workflow.md`](./feature-workflow.md) 补齐 Mock：
+当前 Mock 只覆盖登录、用户启动信息、全量字典、仪表盘统计、登录趋势、个人中心最近登录/操作日志、公告和清缓存。下列组件一旦启用会请求尚未实现的接口，必须先按 [`feature-workflow.md`](./feature-workflow.md) 补齐 Mock：
 
 | 能力 | 缺失接口 |
 | --- | --- |
