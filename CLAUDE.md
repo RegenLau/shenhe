@@ -19,6 +19,28 @@ This repository is a SaiAdmin 5.x frontend prototype workspace for product manag
 - `mock-api/src/`: Mock HTTP routes and response behavior.
 - `mock-api/data/`: fixture data only; no database implementation.
 
+## Mandatory Design Documentation
+
+Before creating or changing product UI, read `docs/README.md` and the documents it routes to:
+
+1. `docs/design-system.md`: visual, interaction, responsive, state, copy, and accessibility rules.
+2. `docs/components.md`: SaiAdmin/Arco component selection, real props, and Mock dependencies.
+3. `docs/page-patterns.md`: canonical list, form, detail, dashboard, and state patterns.
+4. `docs/feature-workflow.md`: page/API/Mock/menu workflow and completion criteria.
+
+These local documents are the executable project standard. Official sites and external AI skills are references only. Existing pages under `src/views/system` are implementation references, not proof that their APIs are covered by the current Mock or that they meet every new rule.
+
+## UI Implementation Rules
+
+- Use existing `Sa*` / `Ma*` components first, then Arco Design Vue. Do not add a second UI library.
+- Use Vue APIs from the locally installed `@arco-design/web-vue` 2.57.x baseline; never copy React component APIs into this project.
+- Keep new pages in JavaScript with `<script setup>`; do not adopt an external skill's TypeScript preference.
+- Use Arco/SaiAdmin theme tokens for text, background, border, primary, and status colors. Do not hardcode the Arco default blue or the current configurable primary color.
+- Start from the matching pattern in `docs/page-patterns.md`; do not invent a new list/form/detail structure when an existing pattern fits.
+- Every asynchronous feature must handle loading, normal, initial empty, filtered empty, error/retry, permission, and long-content states as applicable.
+- Keep page-level layout responsive and free of horizontal scrolling. Tables may scroll inside their own container.
+- Before using user, resource, upload, import, or export components, implement and verify the Mock endpoints listed in `docs/components.md`.
+
 ## Change Rules
 
 - Keep the existing Vue 3, Arco Design, JavaScript, and Yarn 1 conventions.
@@ -32,3 +54,4 @@ This repository is a SaiAdmin 5.x frontend prototype workspace for product manag
 - Run `yarn build` after frontend changes.
 - Run the Mock API checks and verify `/health` after Mock changes.
 - For end-to-end changes, verify the frontend still reaches Mock through the Vite proxy.
+- Apply the visual and interaction checklist in `docs/design-system.md` and the completion definition in `docs/feature-workflow.md` for product features.
