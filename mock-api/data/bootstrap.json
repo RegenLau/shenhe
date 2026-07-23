@@ -22,6 +22,26 @@
           "icon": "icon-user-group",
           "type": "M"
         }
+      },
+      {
+        "name": "productReview",
+        "path": "/product/review",
+        "component": "product/review/index",
+        "meta": {
+          "title": "审核记录",
+          "icon": "icon-check-circle",
+          "type": "M"
+        }
+      },
+      {
+        "name": "productWithdrawal",
+        "path": "/product/withdrawal",
+        "component": "product/withdrawal/index",
+        "meta": {
+          "title": "提现管理",
+          "icon": "icon-export",
+          "type": "M"
+        }
       }
     ],
     "menus": [],
@@ -79,6 +99,33 @@
       { "label": "名单导入", "value": "import", "color": "purple" },
       { "label": "手动分配任务", "value": "manual", "color": "blue" },
       { "label": "小程序注册", "value": "mini_program", "color": "green" }
+    ],
+    "review_result": [
+      { "label": "已通过", "value": "approved", "color": "green" },
+      { "label": "未通过", "value": "rejected", "color": "red" }
+    ],
+    "review_issue_type": [
+      { "label": "用法用量错误", "value": "dosage_error", "color": "red" },
+      {
+        "label": "风险提示缺失",
+        "value": "risk_warning_missing",
+        "color": "orange"
+      },
+      {
+        "label": "相互作用遗漏",
+        "value": "interaction_omission",
+        "color": "orange"
+      },
+      { "label": "超适应症用药", "value": "off_label_usage", "color": "purple" },
+      {
+        "label": "表述不准确",
+        "value": "imprecise_expression",
+        "color": "blue"
+      }
+    ],
+    "withdrawal_export_status": [
+      { "label": "待导出", "value": "pending", "color": "orange" },
+      { "label": "已导出", "value": "exported", "color": "blue" }
     ],
     "notice_type": [
       { "label": "通知", "value": 1, "color": "blue" },

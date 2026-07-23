@@ -9,6 +9,14 @@ const host = process.env.MOCK_API_HOST || '127.0.0.1'
 const port = Number(process.env.MOCK_API_PORT || 3010)
 const accessToken = 'mock-access-token'
 const refreshToken = 'mock-refresh-token'
+const reviewIssueTypes = [
+  'dosage_error',
+  'risk_warning_missing',
+  'interaction_omission',
+  'off_label_usage',
+  'imprecise_expression'
+]
+const withdrawalStatuses = ['pending', 'exported']
 
 const dataPath = fileURLToPath(new URL('../data/bootstrap.json', import.meta.url))
 const fixtures = JSON.parse(readFileSync(dataPath, 'utf8'))
@@ -19,6 +27,11 @@ const tasks = JSON.parse(readFileSync(tasksPath, 'utf8'))
 const doctorsPath = fileURLToPath(new URL('../data/doctors.json', import.meta.url))
 const doctorFixture = JSON.parse(readFileSync(doctorsPath, 'utf8'))
 const doctors = buildDoctors(doctorFixture)
+const reviewsPath = fileURLToPath(new URL('../data/reviews.json', import.meta.url))
+const reviewFixture = JSON.parse(readFileSync(reviewsPath, 'utf8'))
+const reviews = buildReviews(reviewFixture)
+const withdrawalsPath = fileURLToPath(new URL('../data/withdrawals.json', import.meta.url))
+const withdrawals = JSON.parse(readFileSync(withdrawalsPath, 'utf8'))
 workbenchFixture.doctors.total = doctors.length
 workbenchFixture.doctors.active = doctors.filter(
   (doctor) => doctor.account_status === 'active'
@@ -26,6 +39,14 @@ workbenchFixture.doctors.active = doctors.filter(
 workbenchFixture.doctors.pending_activation = doctors.filter(
   (doctor) => doctor.account_status === 'pending_activation'
 ).length
+workbenchFixture.reviews.total = reviews.length
+workbenchFixture.reviews.approved = reviews.filter(
+  (review) => review.result === 'approved'
+).length
+workbenchFixture.reviews.rejected = reviews.filter(
+  (review) => review.result === 'rejected'
+).length
+syncWithdrawalWorkbench()
 const importPreviews = new Map()
 let nextTaskId = Math.max(...tasks.map((task) => task.id)) + 1
 let nextDoctorId = Math.max(...doctors.map((doctor) => doctor.id)) + 1
@@ -157,6 +178,274 @@ function buildDoctors(fixture = {}) {
   }
 
   return records.sort((left, right) => left.id - right.id)
+}
+
+function parseMockDateTime(value) {
+  const [datePart, timePart = '00:00:00'] = String(value).split(' ')
+  const [year, month, day] = datePart.split('-').map(Number)
+  const [hour, minute, second] = timePart.split(':').map(Number)
+  return Date.UTC(year, month - 1, day, hour, minute, second)
+}
+
+function formatMockDateTime(timestamp) {
+  const date = new Date(timestamp)
+  const pad = (value) => String(value).padStart(2, '0')
+
+  return [
+    `${date.getUTCFullYear()}-${pad(date.getUTCMonth() + 1)}-${pad(date.getUTCDate())}`,
+    `${pad(date.getUTCHours())}:${pad(date.getUTCMinutes())}:${pad(
+      date.getUTCSeconds()
+    )}`
+  ].join(' ')
+}
+
+function isRejectedReview(index, total, rejectedTotal) {
+  return (
+    Math.floor(((index + 1) * rejectedTotal) / total) >
+    Math.floor((index * rejectedTotal) / total)
+  )
+}
+
+function buildReviews(fixture = {}) {
+  const contentPool = Array.isArray(fixture.content_pool) ? fixture.content_pool : []
+  const approvedComments = Array.isArray(fixture.approved_comment_templates)
+    ? fixture.approved_comment_templates
+    : []
+  const rejectedComments = fixture.rejected_comment_templates || {}
+  const rejectionCounts = fixture.rejection_counts_by_task || {}
+  const defaultRejectionRate = Number(fixture.default_rejection_rate) || 0.15
+  const generatedUntil = parseMockDateTime(fixture.generated_until)
+  const records = []
+  let reviewId = 1
+
+  tasks
+    .slice()
+    .sort((left, right) => left.id - right.id)
+    .forEach((task) => {
+      const completedCount = Math.max(Number(task.completed_count) || 0, 0)
+      if (completedCount === 0) return
+
+      const doctor = doctors.find((item) => item.id === task.doctor_id)
+      const configuredRejectedCount = Number(rejectionCounts[task.task_no])
+      const rejectedCount = Math.min(
+        completedCount,
+        Math.max(
+          Number.isFinite(configuredRejectedCount)
+            ? configuredRejectedCount
+            : Math.round(completedCount * defaultRejectionRate),
+          0
+        )
+      )
+      const startTime = parseMockDateTime(task.start_time || task.create_time)
+      const endTime = task.complete_time
+        ? parseMockDateTime(task.complete_time)
+        : generatedUntil
+      const timeRange = Math.max(endTime - startTime, 0)
+
+      for (let index = 0; index < completedCount; index += 1) {
+        const content = contentPool[(task.id * 3 + index) % contentPool.length]
+        const rejected = isRejectedReview(index, completedCount, rejectedCount)
+        const issueType = rejected
+          ? reviewIssueTypes[(task.id + index) % reviewIssueTypes.length]
+          : null
+        const commentPool = rejected
+          ? rejectedComments[issueType]
+          : approvedComments
+        const reviewTime = formatMockDateTime(
+          startTime + Math.floor((timeRange * (index + 1)) / (completedCount + 1))
+        )
+
+        records.push({
+          id: reviewId,
+          review_no: `SH${reviewTime.slice(0, 10).replaceAll('-', '')}${String(
+            reviewId
+          ).padStart(6, '0')}`,
+          task_id: task.id,
+          task_no: task.task_no,
+          doctor_id: task.doctor_id,
+          doctor_name: doctor?.name || task.doctor_name,
+          doctor_phone: doctor?.phone || task.doctor_phone,
+          hospital: doctor?.hospital || task.hospital,
+          department: doctor?.department || task.department,
+          drug_name: content.drug_name,
+          drug_type: content.drug_type,
+          disease_type: content.disease_type,
+          question: content.question,
+          answer: {
+            suggestion: content.answer.suggestion,
+            dosage: content.answer.dosage,
+            precautions: [...content.answer.precautions],
+            interaction: content.answer.interaction,
+            warning: content.answer.warning
+          },
+          result: rejected ? 'rejected' : 'approved',
+          issue_type: issueType,
+          review_comment: commentPool[(task.id + index) % commentPool.length],
+          review_time: reviewTime
+        })
+        reviewId += 1
+      }
+    })
+
+  return records
+}
+
+function summarizeWithdrawals(records = []) {
+  return records.reduce(
+    (summary, withdrawal) => {
+      const amountCent = Number(withdrawal.amount_cent) || 0
+      summary.total_count += 1
+      summary.total_amount_cent += amountCent
+
+      if (withdrawal.export_status === 'pending') {
+        summary.pending_count += 1
+        summary.pending_amount_cent += amountCent
+      }
+
+      if (withdrawal.export_status === 'exported') {
+        summary.exported_count += 1
+        summary.exported_amount_cent += amountCent
+      }
+
+      return summary
+    },
+    {
+      total_count: 0,
+      total_amount_cent: 0,
+      pending_count: 0,
+      pending_amount_cent: 0,
+      exported_count: 0,
+      exported_amount_cent: 0
+    }
+  )
+}
+
+function syncWithdrawalWorkbench() {
+  const withdrawalSummary = summarizeWithdrawals(withdrawals)
+  const accruedAmountCent = tasks
+    .filter((task) => task.status === 'completed')
+    .reduce((total, task) => total + Number(task.total_reward_cent || 0), 0)
+  const todoIndex = workbenchFixture.todos.findIndex(
+    (todo) => todo.id === 'withdrawal_pending'
+  )
+
+  workbenchFixture.settlement.accrued_amount_cent = accruedAmountCent
+  workbenchFixture.settlement.withdrawable_amount_cent = Math.max(
+    accruedAmountCent - withdrawalSummary.total_amount_cent,
+    0
+  )
+  workbenchFixture.settlement.pending_withdrawal_amount_cent =
+    withdrawalSummary.pending_amount_cent
+  workbenchFixture.settlement.pending_export_amount_cent =
+    withdrawalSummary.pending_amount_cent
+  workbenchFixture.settlement.exported_amount_cent =
+    withdrawalSummary.exported_amount_cent
+
+  if (withdrawalSummary.pending_count === 0) {
+    if (todoIndex >= 0) workbenchFixture.todos.splice(todoIndex, 1)
+    return
+  }
+
+  const withdrawalTodo = {
+    id: 'withdrawal_pending',
+    title: '提现数据待导出',
+    description: `${withdrawalSummary.pending_count} 笔提现申请待导出并提交基金会。`,
+    count: withdrawalSummary.pending_count,
+    level: 'warning'
+  }
+
+  if (todoIndex >= 0) {
+    workbenchFixture.todos[todoIndex] = {
+      ...workbenchFixture.todos[todoIndex],
+      ...withdrawalTodo
+    }
+    return
+  }
+
+  workbenchFixture.todos.push(withdrawalTodo)
+}
+
+function maskPhone(value) {
+  const phone = String(value || '')
+  if (phone.length < 7) return phone
+  return `${phone.slice(0, 3)}****${phone.slice(-4)}`
+}
+
+function maskIdCard(value) {
+  const idCard = String(value || '')
+  if (idCard.length < 10) return idCard
+  return `${idCard.slice(0, 6)}********${idCard.slice(-4)}`
+}
+
+function maskBankCard(value) {
+  const bankCard = String(value || '')
+  if (bankCard.length <= 4) return bankCard
+  return `**** **** **** ${bankCard.slice(-4)}`
+}
+
+function getWithdrawalSourceTasks(withdrawal) {
+  const task = tasks.find((item) => item.id === withdrawal.source_task_id)
+
+  return [
+    {
+      task_no: withdrawal.source_task_no,
+      review_count: Number(withdrawal.source_review_count) || 0,
+      reward_amount_cent: Number(withdrawal.amount_cent) || 0,
+      completed_at: task?.complete_time || null
+    }
+  ]
+}
+
+function toPublicWithdrawal(withdrawal, includeSourceTasks = false) {
+  const sourceTasks = getWithdrawalSourceTasks(withdrawal)
+  const doctor = doctors.find((item) => item.id === withdrawal.doctor_id)
+  const result = {
+    id: withdrawal.id,
+    withdrawal_no: withdrawal.withdrawal_no,
+    status: withdrawal.export_status,
+    applied_at: withdrawal.apply_time,
+    exported_at: withdrawal.export_time,
+    doctor_id: withdrawal.doctor_id,
+    doctor_name: withdrawal.doctor_name,
+    payee_name: withdrawal.doctor_name,
+    hospital: doctor?.hospital || null,
+    department: doctor?.department || null,
+    doctor_phone_masked: maskPhone(withdrawal.doctor_phone),
+    id_card_masked: maskIdCard(withdrawal.id_card_no),
+    bank_name: withdrawal.bank_name,
+    bank_card_masked: maskBankCard(withdrawal.bank_card_no),
+    amount_cent: Number(withdrawal.amount_cent) || 0,
+    source_task_count: sourceTasks.length,
+    source_review_count: sourceTasks.reduce(
+      (total, sourceTask) => total + sourceTask.review_count,
+      0
+    )
+  }
+
+  if (includeSourceTasks) {
+    result.source_tasks = sourceTasks
+  }
+
+  return result
+}
+
+function escapeCsvCell(value) {
+  if (value?.type === 'excelText') {
+    const exactText = String(value.value ?? '').replaceAll('"', '""')
+    return `"=""${exactText}"""`
+  }
+
+  const originalText = String(value ?? '')
+  const text = /^[\s\u0000-\u001f\u007f]*[=+\-@]/.test(originalText)
+    ? `'${originalText}`
+    : originalText
+  if (!/[",\r\n]/.test(text)) return text
+  return `"${text.replaceAll('"', '""')}"`
+}
+
+function toExcelText(value, pattern) {
+  const text = String(value ?? '')
+  return pattern.test(text) ? { type: 'excelText', value: text } : text
 }
 
 function parseCsv(content) {
@@ -462,6 +751,212 @@ app.get('/core/product/doctor/read', (req, res) => {
   }
 
   res.json(success(hydrateDoctor(doctor, true)))
+})
+
+app.get('/core/product/review/index', (req, res) => {
+  const keyword = String(req.query.keyword || '').trim().toLowerCase()
+  const result =
+    req.query.result === 'all' ? '' : String(req.query.result || '').trim()
+  const issueType =
+    req.query.issue_type === 'all'
+      ? ''
+      : String(req.query.issue_type || '').trim()
+  const page = req.query.page === undefined ? 1 : Number(req.query.page)
+  const limit = req.query.limit === undefined ? 10 : Number(req.query.limit)
+
+  if (result && !['approved', 'rejected'].includes(result)) {
+    res.json(failure(422, '审核结果筛选值无效'))
+    return
+  }
+
+  if (issueType && !reviewIssueTypes.includes(issueType)) {
+    res.json(failure(422, '问题类型筛选值无效'))
+    return
+  }
+
+  if (!Number.isInteger(page) || page <= 0) {
+    res.json(failure(422, '页码必须是正整数'))
+    return
+  }
+
+  if (!Number.isInteger(limit) || limit <= 0) {
+    res.json(failure(422, '每页条数必须是正整数'))
+    return
+  }
+
+  const filteredReviews = reviews
+    .filter((review) => {
+      if (result && review.result !== result) return false
+      if (issueType && review.issue_type !== issueType) return false
+      if (!keyword) return true
+
+      return [
+        review.review_no,
+        review.task_no,
+        review.doctor_name,
+        review.doctor_phone,
+        review.hospital,
+        review.department,
+        review.drug_name,
+        review.drug_type,
+        review.disease_type,
+        review.question
+      ].some((value) => String(value || '').toLowerCase().includes(keyword))
+    })
+    .sort(
+      (left, right) =>
+        right.review_time.localeCompare(left.review_time) || right.id - left.id
+    )
+
+  res.json(success(paginate(filteredReviews, { page, limit })))
+})
+
+app.get('/core/product/review/read', (req, res) => {
+  const id = Number(req.query.id)
+
+  if (!Number.isInteger(id) || id <= 0) {
+    res.json(failure(422, '请提供有效的审核记录 ID'))
+    return
+  }
+
+  const review = reviews.find((item) => item.id === id)
+
+  if (!review) {
+    res.json(failure(404, '未找到对应审核记录'))
+    return
+  }
+
+  res.json(success(review))
+})
+
+app.get('/core/product/withdrawal/summary', (req, res) => {
+  res.json(success(summarizeWithdrawals(withdrawals)))
+})
+
+app.get('/core/product/withdrawal/index', (req, res) => {
+  const keyword = String(req.query.keyword || '').trim().toLowerCase()
+  const status = req.query.status === 'all' ? '' : String(req.query.status || '').trim()
+  const page = req.query.page === undefined ? 1 : Number(req.query.page)
+  const limit = req.query.limit === undefined ? 10 : Number(req.query.limit)
+
+  if (status && !withdrawalStatuses.includes(status)) {
+    res.json(failure(422, '导出状态筛选值无效'))
+    return
+  }
+
+  if (!Number.isInteger(page) || page <= 0) {
+    res.json(failure(422, '页码必须是正整数'))
+    return
+  }
+
+  if (!Number.isInteger(limit) || limit <= 0) {
+    res.json(failure(422, '每页条数必须是正整数'))
+    return
+  }
+
+  const filteredWithdrawals = withdrawals
+    .filter((withdrawal) => {
+      if (status && withdrawal.export_status !== status) return false
+      if (!keyword) return true
+
+      return [
+        withdrawal.withdrawal_no,
+        withdrawal.doctor_name,
+        withdrawal.doctor_phone,
+        withdrawal.bank_name,
+        withdrawal.source_task_no
+      ].some((value) => String(value || '').toLowerCase().includes(keyword))
+    })
+    .sort(
+      (left, right) =>
+        right.apply_time.localeCompare(left.apply_time) || right.id - left.id
+    )
+    .map((withdrawal) => toPublicWithdrawal(withdrawal))
+
+  res.json(success(paginate(filteredWithdrawals, { page, limit })))
+})
+
+app.get('/core/product/withdrawal/read', (req, res) => {
+  const id = Number(req.query.id)
+
+  if (!Number.isInteger(id) || id <= 0) {
+    res.json(failure(422, '请提供有效的提现申请 ID'))
+    return
+  }
+
+  const withdrawal = withdrawals.find((item) => item.id === id)
+
+  if (!withdrawal) {
+    res.json(failure(404, '未找到对应提现申请'))
+    return
+  }
+
+  res.json(success(toPublicWithdrawal(withdrawal, true)))
+})
+
+app.post('/core/product/withdrawal/export', (req, res) => {
+  const pendingWithdrawals = withdrawals
+    .filter((withdrawal) => withdrawal.export_status === 'pending')
+    .sort(
+      (left, right) =>
+        left.apply_time.localeCompare(right.apply_time) || left.id - right.id
+    )
+
+  if (pendingWithdrawals.length === 0) {
+    res.json(failure(422, '暂无待导出的提现申请'))
+    return
+  }
+
+  const exportTime = formatDateTime()
+  const rows = [
+    [
+      '申请单号',
+      '申请时间',
+      '姓名',
+      '手机号',
+      '身份证号',
+      '开户行',
+      '银行卡号',
+      '金额(元)',
+      '来源任务编号',
+      '审核条数'
+    ],
+    ...pendingWithdrawals.map((withdrawal) => {
+      const sourceTasks = getWithdrawalSourceTasks(withdrawal)
+
+      return [
+        withdrawal.withdrawal_no,
+        withdrawal.apply_time,
+        withdrawal.doctor_name,
+        toExcelText(withdrawal.doctor_phone, /^\d{11}$/),
+        toExcelText(withdrawal.id_card_no, /^\d{17}[\dXx]$/),
+        withdrawal.bank_name,
+        toExcelText(withdrawal.bank_card_no, /^\d{16,19}$/),
+        (Number(withdrawal.amount_cent || 0) / 100).toFixed(2),
+        sourceTasks.map((sourceTask) => sourceTask.task_no).join('、'),
+        sourceTasks.reduce(
+          (total, sourceTask) => total + sourceTask.review_count,
+          0
+        )
+      ]
+    })
+  ]
+  const csv = rows.map((row) => row.map(escapeCsvCell).join(',')).join('\r\n')
+  const exportBatch = exportTime.replaceAll(/[-: ]/g, '')
+
+  pendingWithdrawals.forEach((withdrawal) => {
+    withdrawal.export_status = 'exported'
+    withdrawal.export_time = exportTime
+  })
+  syncWithdrawalWorkbench()
+
+  res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="foundation-withdrawals-${exportBatch}.csv"`
+  )
+  res.send(`\uFEFF${csv}`)
 })
 
 app.get('/core/product/task/index', (req, res) => {
