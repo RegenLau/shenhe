@@ -4,7 +4,7 @@ export default {
 
   // 首页菜单
   'home': '首页',
-  'dashboard': '仪表盘',
+  'dashboard': '工作台',
   'userCenter': '个人中心',
   'message': '消息中心',
   'setting:config': '系统配置',

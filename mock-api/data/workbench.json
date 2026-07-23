@@ -1,0 +1,56 @@
+{
+  "scope": "试点累计",
+  "updated_at": "2026-07-23 14:30:00",
+  "doctors": {
+    "total": 120,
+    "active": 40,
+    "pending_activation": 80
+  },
+  "tasks": {
+    "total": 1000,
+    "pending": 560,
+    "in_progress": 140,
+    "completed": 300
+  },
+  "reviews": {
+    "total": 300,
+    "approved": 254,
+    "rejected": 46
+  },
+  "settlement": {
+    "accrued_amount_cent": 1500000,
+    "withdrawable_amount_cent": 250000,
+    "pending_withdrawal_amount_cent": 500000,
+    "paid_amount_cent": 750000
+  },
+  "todos": [
+    {
+      "id": "task_generation_failed",
+      "title": "任务生成失败",
+      "description": "3 条导入记录尚未生成任务，需要检查手机号或审核内容库存。",
+      "count": 3,
+      "level": "urgent"
+    },
+    {
+      "id": "doctor_certification",
+      "title": "医生认证待审核",
+      "description": "12 位医生已提交认证资料，等待运营人员处理。",
+      "count": 12,
+      "level": "warning"
+    },
+    {
+      "id": "withdrawal_pending",
+      "title": "提现申请待处理",
+      "description": "8 笔提现申请等待整理并提交基金会。",
+      "count": 8,
+      "level": "warning"
+    },
+    {
+      "id": "payment_result_pending",
+      "title": "付款结果待登记",
+      "description": "1 个基金会结算批次尚未登记付款结果。",
+      "count": 1,
+      "level": "info"
+    }
+  ]
+}

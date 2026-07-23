@@ -3,7 +3,7 @@ const homePageRoutes = [
     name: 'dashboard',
     path: '/dashboard',
     meta: {
-      title: '仪表盘',
+      title: '工作台',
       icon: 'icon-dashboard',
       type: 'M',
       affix: true
@@ -19,15 +19,6 @@ const homePageRoutes = [
       type: 'M'
     },
     component: () => import('@/views/dashboard/userCenter/index.vue')
-  },
-  {
-    name: 'appStore',
-    path: 'https://saas.saithink.top/#/appStore',
-    meta: {
-      title: '插件市场',
-      icon: 'icon-apps',
-      type: 'L'
-    }
   }
 ]
 
