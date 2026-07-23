@@ -1,6 +1,8 @@
-# SaiAdmin AI Prototype Base
+# 希息健康后台 V1
 
-基于 SaiAdmin Vue 5.x 的后台前端原型项目。页面始终通过 `src/api` 发起真实 HTTP 请求；开发环境由独立的 `mock-api` 提供数据，不包含数据库和生产后端逻辑。
+基于 SaiAdmin Vue 5.x 的希息健康审核业务运营后台原型。页面始终通过 `src/api` 发起真实 HTTP 请求；开发环境由独立的 `mock-api` 提供数据，不包含数据库和生产后端逻辑。
+
+换电脑或交接开发时，先阅读完整的[开发交接文档](./docs/HANDOFF.md)。
 
 ## 架构
 
@@ -25,7 +27,7 @@ mock-api/data/        JSON 示例数据
 如果本机没有全局 Yarn，可使用：
 
 ```bash
-npm exec --yes --package yarn@1.22.22 -- yarn install
+npm exec --yes --package yarn@1.22.22 -- yarn install --frozen-lockfile
 npm run dev:all
 ```
 
@@ -94,7 +96,7 @@ yarn dev
 
 ### 当前 Mock 覆盖
 
-当前 Mock 已覆盖登录、用户启动信息、全量字典、仪表盘统计、登录趋势、个人中心最近登录/操作日志、公告和清缓存。继承的系统管理页面仍有大量接口未实现，因此可以参考其页面结构，但不代表它们当前都能运行。
+当前 Mock 已覆盖登录、用户启动信息、动态菜单和字典，以及希息健康工作台、任务管理、医生管理、审核记录、提现管理的 V1 HTTP 链路。继承的系统管理页面仍有大量接口未实现，因此可以参考其页面结构，但不代表它们当前都能运行。
 
 用户选择、资源选择、图片/文件上传、分片上传、表格导入导出等组件需要额外 Mock 端点。使用前先查看 [组件指南中的 Mock 缺口](./docs/components.md#当前-mock-缺口)，并按 [AI 新功能开发流程](./docs/feature-workflow.md) 补齐真实 HTTP 行为。
 
@@ -107,4 +109,4 @@ yarn build
 
 没有全局 Yarn 时，验证命令可对应改为 `npm run mock:check` 和 `npm run build`。
 
-上游项目：[saithink/saiadmin-vue](https://github.com/saithink/saiadmin-vue)，MIT License。
+当前基础仓库：[RegenLau/saiadmin-base](https://github.com/RegenLau/saiadmin-base)。原项目采用 MIT License。

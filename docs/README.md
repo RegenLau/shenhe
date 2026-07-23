@@ -2,6 +2,8 @@
 
 本目录是 AI 和人工开发 SaiAdmin 后台功能时的本地执行标准。官网用于查 API 和理解设计背景，真正约束本项目的规则必须写在这里。
 
+换电脑、移交项目或开启新的开发会话时，先阅读 [`HANDOFF.md`](./HANDOFF.md)。
+
 ## 适用范围
 
 - 首先约束 `src/views/product/`、`src/api/product/` 和对应 Mock 模块。

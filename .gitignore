@@ -7,3 +7,4 @@ dist-ssr
 stats.html
 mock-api/*.log
 .playwright-cli/
+.playwright-mcp/
