@@ -66,7 +66,7 @@
                 <span class="progress-label">整体完成率</span>
                 <strong>{{ taskCompletionPercent }}%</strong>
               </div>
-              <span>已完成 {{ formatNumber(overview.tasks.completed) }} / {{ formatNumber(overview.tasks.total) }} 条</span>
+              <span>已审核 {{ formatNumber(overview.reviews.total) }} / {{ formatNumber(overview.tasks.total) }} 条</span>
             </div>
             <a-progress :percent="taskCompletionRate" :show-text="false" />
 
@@ -174,7 +174,8 @@ const overview = reactive({
     accrued_amount_cent: 0,
     withdrawable_amount_cent: 0,
     pending_withdrawal_amount_cent: 0,
-    paid_amount_cent: 0
+    pending_export_amount_cent: 0,
+    exported_amount_cent: 0
   },
   todos: []
 })
@@ -185,7 +186,7 @@ const formatCurrency = (value) => `¥${formatNumber(centToYuan(value))}`
 
 const taskCompletionRate = computed(() => {
   if (!overview.tasks.total) return 0
-  return Math.min(overview.tasks.completed / overview.tasks.total, 1)
+  return Math.min(overview.reviews.total / overview.tasks.total, 1)
 })
 
 const taskCompletionPercent = computed(() => Math.round(taskCompletionRate.value * 100))

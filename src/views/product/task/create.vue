@@ -55,8 +55,8 @@
         </a-input-number>
       </a-form-item>
 
-      <a-form-item label="分配规则">
-        <span class="readonly-text">系统自动分配未审核内容</span>
+      <a-form-item label="任务说明">
+        <span class="readonly-text">按任务数量创建医生审核任务</span>
       </a-form-item>
 
       <a-form-item label="单条计酬">

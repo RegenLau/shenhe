@@ -166,7 +166,7 @@
           <strong>{{ formatNumber(result.created_task_count) }}</strong>
         </div>
         <div>
-          <span>已分配内容</span>
+          <span>任务总量</span>
           <strong>{{ formatNumber(result.assigned_item_count) }} 条</strong>
         </div>
       </div>

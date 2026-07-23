@@ -1087,8 +1087,8 @@ app.post('/core/product/task/save', (req, res) => {
     success(
       hydrateTask(task),
       accountCreated
-        ? '医生账号和任务已创建，审核内容已自动分配'
-        : '任务已创建并自动分配审核内容'
+        ? '医生账号和任务已创建'
+        : '任务已创建'
     )
   )
 })

@@ -26,20 +26,6 @@
   },
   "todos": [
     {
-      "id": "task_generation_failed",
-      "title": "任务生成失败",
-      "description": "3 条导入记录尚未生成任务，需要检查手机号或审核内容库存。",
-      "count": 3,
-      "level": "urgent"
-    },
-    {
-      "id": "doctor_certification",
-      "title": "医生认证待审核",
-      "description": "12 位医生已提交认证资料，等待运营人员处理。",
-      "count": 12,
-      "level": "warning"
-    },
-    {
       "id": "withdrawal_pending",
       "title": "提现数据待导出",
       "description": "8 笔提现申请待导出并提交基金会。",
