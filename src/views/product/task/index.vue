@@ -69,12 +69,10 @@
         <div class="doctor-cell">
           <div class="doctor-name">
             <span>{{ record.doctor_name }}</span>
-            <a-tag
-              size="small"
-              :color="record.account_status === 'active' ? 'green' : 'orange'"
-            >
-              {{ record.account_status === 'active' ? '已激活' : '待激活' }}
-            </a-tag>
+            <sa-dict
+              :value="record.account_status"
+              dict="doctor_account_status"
+            />
           </div>
           <span>
             {{ maskPhone(record.doctor_phone) }} · {{ record.department || '执业信息待补充' }}

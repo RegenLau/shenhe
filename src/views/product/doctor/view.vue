@@ -19,17 +19,16 @@
       </a-result>
 
       <template v-else-if="detail.id">
-        <a-alert
-          :type="accountActive ? 'success' : 'warning'"
-          show-icon
-          class="account-alert"
-        >
+        <a-alert :type="accountAlertType" show-icon class="account-alert">
           <template v-if="accountActive">
             医生已使用绑定手机号登录小程序，账号已激活。最近登录时间为
             {{ detail.last_login_time || '—' }}。
           </template>
+          <template v-else-if="accountDisabled">
+            账号已禁用，医生当前无法登录小程序；历史任务和计酬记录仍会保留。
+          </template>
           <template v-else>
-            账号已按手机号自动创建。医生首次使用 {{ detail.phone }}
+            账号已按手机号自动创建。医生首次使用 {{ maskPhone(detail.phone) }}
             登录小程序后，即可查看已分配任务。
           </template>
         </a-alert>
@@ -71,7 +70,7 @@
               {{ detail.name || '—' }}
             </a-descriptions-item>
             <a-descriptions-item label="绑定手机号">
-              {{ detail.phone || '—' }}
+              {{ maskPhone(detail.phone) }}
             </a-descriptions-item>
             <a-descriptions-item label="账号状态">
               <sa-dict
@@ -172,8 +171,16 @@ const taskColumns = [
 ]
 
 const accountActive = computed(() => detail.value.account_status === 'active')
+const accountDisabled = computed(() => detail.value.account_status === 'disabled')
+const accountAlertType = computed(() => {
+  if (accountActive.value) return 'success'
+  if (accountDisabled.value) return 'error'
+  return 'warning'
+})
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
 const formatCurrency = (value) => `¥${formatNumber(Number(value || 0) / 100)}`
+const maskPhone = (value) =>
+  String(value || '').replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2') || '—'
 const practiceValue = (value) => {
   return value && value !== '待补充' ? value : '待补充'
 }

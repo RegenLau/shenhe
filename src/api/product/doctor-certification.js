@@ -3,7 +3,7 @@ import { request } from '@/utils/request.js'
 export default {
   getPageList(params = {}) {
     return request({
-      url: '/core/product/doctor/index',
+      url: '/core/product/doctor-certification/index',
       method: 'get',
       params
     })
@@ -11,15 +11,15 @@ export default {
 
   read(id) {
     return request({
-      url: '/core/product/doctor/read',
+      url: '/core/product/doctor-certification/read',
       method: 'get',
       params: { id }
     })
   },
 
-  changeAccountStatus(data = {}) {
+  review(data = {}) {
     return request({
-      url: '/core/product/doctor/status',
+      url: '/core/product/doctor-certification/review',
       method: 'post',
       data
     })

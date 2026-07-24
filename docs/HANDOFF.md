@@ -1,6 +1,6 @@
 # 希息健康后台 V1 开发交接
 
-> 更新时间：2026-07-23
+> 更新时间：2026-07-24
 > 线上仓库：[RegenLau/shenhe](https://github.com/RegenLau/shenhe)
 > 当前开发分支：`main`
 > 业务功能基线：`53b4793`（交接文档提交前）
@@ -148,14 +148,17 @@ npm run dev
 | 模块 | 已实现能力 |
 | --- | --- |
 | 工作台 | 医生账号、任务总量、已审核数量、审核结果、累计计酬、可提现金额及提现待办 |
-| 任务管理 | 手动创建任务；CSV 名单校验预览；按手机号创建或复用医生账号；整批创建任务；列表、筛选、详情、进度和计酬 |
-| 医生管理 | 医生资料、账号激活状态、只读认证状态、任务概况、最近任务和累计计酬 |
+| 医生管理 | 关键词、账号状态和认证状态筛选；姓名、手机号、医院、科室与职称、账号状态、认证状态、累计计酬、详情、禁用和开启账号 |
+| 医生认证 | 医生筛选、认证列表、认证详情、脱敏证件信息与示意附件、人工核对确认、认证通过和认证驳回 |
+| 任务管理 | 手动创建任务；CSV 名单校验预览；按手机号创建或复用医生账号；整批创建任务；禁用账号拦截；列表、筛选、详情、进度和计酬 |
 | 审核记录 | 模拟问题、AI 回答、通过/不通过、问题类型、原因、医生、任务和审核时间；后台只读 |
 | 提现管理 | 提现统计、查询、脱敏详情、计酬来源、敏感导出确认、基金会 CSV 导出和导出状态回写 |
+| 医生端配置 | 在“系统设置”中维护小程序首次登录可选的医院、科室和职务；支持查询、新增、编辑、启停和删除 |
 
 关键边界：
 
-- 医生认证状态当前只展示，不是任务门槛，后台没有认证审批流程。
+- 医生认证支持人工复审、通过和驳回；通过前需确认已核对证件姓名、脱敏身份证号、医院和执业证书信息。认证状态不作为医生执行已分配审核任务的门槛。
+- 已禁用医生保留历史任务和计酬，但不能登录小程序；任务创建页会明确提示禁用状态，手动创建和名单导入也会阻止继续分配新任务。后台重新开启后，有过登录记录的账号恢复为已激活，否则恢复为待激活。
 - 审核记录只做证据查看，后台不复核、不改判。
 - 提现模块只整理基金会名单，不审批、不打款、不登记付款结果。
 - “已导出”只代表名单已整理，不能表达成“已付款”。
@@ -167,7 +170,7 @@ Mock 服务重启后的初始数据：
 
 | 指标 | 基线 |
 | --- | --- |
-| 医生账号 | 120 人：已激活 40、待激活 80 |
+| 医生账号 | 120 人：已激活 40、待激活 79、已禁用 1 |
 | 任务 | 8 个任务单，共 1,000 条审核任务 |
 | 已完成审核 | 355 条：通过 302、不通过 53 |
 | 整体完成率 | `355 / 1000 = 36%`（页面四舍五入） |
@@ -177,6 +180,7 @@ Mock 服务重启后的初始数据：
 | 可提现 | ¥2,500 |
 | 待导出提现 | 8 笔，共 ¥5,000 |
 | 已导出提现 | 3 笔，共 ¥7,500 |
+| 医生端配置 | 医院 7 条（启用 6）、科室 7 条（启用 6）、职务 6 条（启用 5） |
 
 当前计酬逻辑是“整个任务完成后计入累计计酬”，不是每提交一条立即入账。开发医生端前要再次确认该规则。
 
@@ -227,10 +231,12 @@ docs/feature-workflow.md          页面/API/Mock/菜单完整开发流程
 
 src/views/product/
   workbench/index.vue             工作台
-  task/                           任务列表、创建、导入和详情
   doctor/                         医生列表和详情
+  doctor-certification/           医生认证列表、详情和人工复审
+  task/                           任务列表、创建、导入和详情
   review/                         审核记录列表和详情
   withdrawal/                     提现列表和详情
+  doctor-config/                  医生端医院、科室和职务配置
 
 src/api/product/                  各业务模块唯一的数据访问入口
 mock-api/src/server.js            Mock 路由、校验和内存业务行为
@@ -238,8 +244,10 @@ mock-api/data/bootstrap.json      登录启动信息、动态菜单和字典
 mock-api/data/workbench.json      工作台初始统计
 mock-api/data/tasks.json          任务初始数据
 mock-api/data/doctors.json        医生初始数据
+mock-api/data/doctor-certifications.json 医生认证初始数据
 mock-api/data/reviews.json        审核内容模板和生成规则
 mock-api/data/withdrawals.json    提现初始数据
+mock-api/data/doctor-config.json  医院、科室和职务初始配置
 ```
 
 模块对应关系：
@@ -247,12 +255,14 @@ mock-api/data/withdrawals.json    提现初始数据
 | 模块 | 页面 | API | Fixture / Mock |
 | --- | --- | --- | --- |
 | 工作台 | `src/views/product/workbench` | `src/api/product/workbench.js` | `workbench.json` + `server.js` |
-| 任务 | `src/views/product/task` | `src/api/product/task.js` | `tasks.json`、`doctors.json` + `server.js` |
 | 医生 | `src/views/product/doctor` | `src/api/product/doctor.js` | `doctors.json`、`tasks.json` + `server.js` |
+| 医生认证 | `src/views/product/doctor-certification` | `src/api/product/doctor-certification.js` | `doctor-certifications.json`、`doctors.json` + `server.js` |
+| 任务 | `src/views/product/task` | `src/api/product/task.js` | `tasks.json`、`doctors.json` + `server.js` |
 | 审核 | `src/views/product/review` | `src/api/product/review.js` | `reviews.json`、`tasks.json` + `server.js` |
 | 提现 | `src/views/product/withdrawal` | `src/api/product/withdrawal.js` | `withdrawals.json` + `server.js` |
+| 医生端配置 | `src/views/product/doctor-config` | `src/api/product/doctor-config.js` | `doctor-config.json` + `server.js` |
 
-动态业务菜单不直接写进框架路由。菜单和字典由 `mock-api/data/bootstrap.json` 中的 `/core/system/user` 启动数据返回。
+动态业务菜单不直接写进框架路由。菜单和字典由 `mock-api/data/bootstrap.json` 中的 `/core/system/user` 启动数据返回。当前顺序为：医生管理 → 医生认证 → 任务管理 → 审核记录 → 提现管理 → 系统设置。
 
 工作台不在上述业务菜单数组中：`user.dashboard = "workbench"` 会经过 `src/views/dashboard/index.vue` 和 `dashboard/components/work-panel.vue` 加载 `product/workbench/index.vue`。
 
@@ -305,6 +315,7 @@ mock-api/data/withdrawals.json    提现初始数据
 
 Mock 没有数据库。以下操作只改变当前 Node 进程内存：
 
+- 医生账号禁用和开启
 - 手动创建任务
 - 名单导入并创建账号/任务
 - 提现名单导出及状态回写
@@ -316,16 +327,16 @@ Mock 没有数据库。以下操作只改变当前 Node 进程内存：
 
 补充说明：
 
-- `doctors.json` 只显式保存代表性记录，Mock 启动时会确定性补足到 120 人。
+- `doctors.json` 只显式保存代表性记录，Mock 启动时会确定性补足到 120 人。`doctor-certifications.json` 保存代表性认证记录，其余已提交记录会按医生状态确定性补足；认证详情中的执业证附件为明确标注的原型示意图，不是真实证件。
 - 审核记录由任务的 `completed_count`、医生信息和 `reviews.json` 模拟问答池确定性生成，不是医生端真实提交。
 - 如果修改了 `server.js` 却仍命中旧路由或旧数据，先确认并重启 `3010` 上的 Mock 进程。
 
 ## 9. 明确未实现
 
-后台 V1 的五个模块已经完成，不要继续从旧原型中虚构后台菜单。整个产品仍缺少：
+后台 V1 已按最新功能导图补齐医生认证模块；附图之外仍不从旧原型恢复延期菜单。整个产品仍缺少：
 
 - 医生端微信小程序或移动端 H5。
-- 手机号登录、微信授权、首次激活和资料补全。
+- 手机号登录、微信授权、首次激活、认证资料提交/重新提交和资料补全。
 - 医生本人任务列表、任务详情和开始/继续审核。
 - 医生逐条提交审核、暂停继续、进度保存和真实任务完成。
 - 医生审核历史、钱包和提交提现。
@@ -335,7 +346,6 @@ Mock 没有数据库。以下操作只改变当前 Node 进程内存：
 - 身份证/银行卡四要素校验及合规存储。
 - 基金会后台、自动支付或付款结果回传。
 - 企业/区域、志愿者/代表端、数字人和科普。
-- 医生认证审批。
 - 精细的科室—疾病—药品匹配。
 - Excel `.xlsx` 名单导入；当前只支持 CSV。
 
@@ -343,7 +353,7 @@ Mock 没有数据库。以下操作只改变当前 Node 进程内存：
 
 ## 10. 下一阶段建议
 
-不要再扩展后台业务模块。下一阶段应单独开发医生端，建议顺序：
+完成本轮菜单与医生认证调整后，下一阶段应单独开发医生端，建议顺序：
 
 1. 手机号登录、首次激活与任务中心。
 2. 任务详情、逐条审核和暂停继续。
@@ -386,8 +396,9 @@ Invoke-RestMethod http://127.0.0.1:3010/health
 - 登录后能加载动态菜单。
 - 工作台统计与任务、审核、提现数据一致。
 - 任务搜索、详情、创建、CSV 预览和确认导入可用。
-- 新手机号创建待激活医生，已有手机号复用原账号。
-- 医生、审核和提现列表/详情正常，敏感字段保持脱敏。
+- 新手机号创建待激活医生，已有正常手机号复用原账号；任务列表和详情正确显示禁用状态，已禁用手机号无法再创建任务或通过名单导入。
+- 医生、审核和提现列表/详情正常，敏感字段保持脱敏；医生账号可禁用和重新开启。
+- 医生认证筛选、详情、脱敏证件信息和示意附件可见；通过前必须确认材料核对，驳回原因必填。
 - 提现导出前有敏感信息确认。
 - 导出后待导出变为 0、记录变为已导出、工作台待办同步消失。
 - 桌面端和 375px 无页面级横向滚动。

@@ -4,22 +4,32 @@
     "roles": ["R_SUPER", "R_ADMIN"],
     "routers": [
       {
-        "name": "productTask",
-        "path": "/product/task",
-        "component": "product/task/index",
-        "meta": {
-          "title": "任务管理",
-          "icon": "icon-list",
-          "type": "M"
-        }
-      },
-      {
         "name": "productDoctor",
         "path": "/product/doctor",
         "component": "product/doctor/index",
         "meta": {
           "title": "医生管理",
           "icon": "icon-user-group",
+          "type": "M"
+        }
+      },
+      {
+        "name": "productDoctorCertification",
+        "path": "/product/doctor-certification",
+        "component": "product/doctor-certification/index",
+        "meta": {
+          "title": "医生认证",
+          "icon": "icon-safe",
+          "type": "M"
+        }
+      },
+      {
+        "name": "productTask",
+        "path": "/product/task",
+        "component": "product/task/index",
+        "meta": {
+          "title": "任务管理",
+          "icon": "icon-list",
           "type": "M"
         }
       },
@@ -42,6 +52,28 @@
           "icon": "icon-export",
           "type": "M"
         }
+      },
+      {
+        "name": "systemSettings",
+        "path": "/settings",
+        "component": "product/doctor-config/index",
+        "meta": {
+          "title": "系统设置",
+          "icon": "icon-settings",
+          "type": "M"
+        },
+        "children": [
+          {
+            "name": "productDoctorConfig",
+            "path": "/settings/doctor-config",
+            "component": "product/doctor-config/index",
+            "meta": {
+              "title": "医生端配置",
+              "icon": "icon-user-group",
+              "type": "M"
+            }
+          }
+        ]
       }
     ],
     "menus": [],
@@ -86,8 +118,9 @@
       { "label": "名单导入", "value": "import", "color": "purple" }
     ],
     "doctor_account_status": [
+      { "label": "待激活", "value": "pending_activation", "color": "orange" },
       { "label": "已激活", "value": "active", "color": "green" },
-      { "label": "待激活", "value": "pending_activation", "color": "orange" }
+      { "label": "已禁用", "value": "disabled", "color": "red" }
     ],
     "doctor_certification_status": [
       { "label": "未提交", "value": "unsubmitted", "color": "gray" },

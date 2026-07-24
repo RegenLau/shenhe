@@ -116,6 +116,10 @@ const hasNameConflict = computed(() => {
   return matchedAccount.value.name !== formData.doctor_name.trim()
 })
 
+const accountDisabled = computed(
+  () => matchedAccount.value?.account_status === 'disabled'
+)
+
 const accountHint = computed(() => {
   if (!/^1\d{10}$/.test(formData.doctor_phone)) return null
 
@@ -123,6 +127,13 @@ const accountHint = computed(() => {
     return {
       type: 'error',
       text: `该手机号已属于“${matchedAccount.value.name}”，请核对姓名后再创建任务。`
+    }
+  }
+
+  if (accountDisabled.value) {
+    return {
+      type: 'error',
+      text: '该医生账号已禁用，不能分配新任务。请先到医生管理中开启账号。'
     }
   }
 
@@ -163,7 +174,7 @@ const open = async () => {
 
 const submit = async (done) => {
   const errors = await formRef.value?.validate()
-  if (errors || hasNameConflict.value) {
+  if (errors || hasNameConflict.value || accountDisabled.value) {
     done(false)
     return
   }

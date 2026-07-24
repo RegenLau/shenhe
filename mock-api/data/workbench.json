@@ -4,7 +4,8 @@
   "doctors": {
     "total": 120,
     "active": 40,
-    "pending_activation": 80
+    "pending_activation": 79,
+    "disabled": 1
   },
   "tasks": {
     "total": 1000,

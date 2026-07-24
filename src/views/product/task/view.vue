@@ -20,15 +20,18 @@
 
       <template v-else-if="detail.id">
         <a-alert
-          :type="accountActive ? 'success' : 'warning'"
+          :type="accountAlertType"
           show-icon
           class="account-alert"
         >
           <template v-if="accountActive">
             医生账号已激活，当前任务已显示在该医生的小程序任务列表中。
           </template>
+          <template v-else-if="accountDisabled">
+            医生账号已禁用，当前无法登录小程序；该历史任务和计酬记录仍会保留。
+          </template>
           <template v-else>
-            医生账号已按手机号自动创建。医生首次使用 {{ detail.doctor_phone }}
+            医生账号已按手机号自动创建。医生首次使用 {{ maskPhone(detail.doctor_phone) }}
             登录小程序后，即可查看该任务。
           </template>
         </a-alert>
@@ -58,15 +61,17 @@
               {{ detail.doctor_name }}
             </a-descriptions-item>
             <a-descriptions-item label="绑定手机号">
-              {{ detail.doctor_phone }}
+              {{ maskPhone(detail.doctor_phone) }}
             </a-descriptions-item>
             <a-descriptions-item label="执业信息">
               {{ practiceInfo }}
             </a-descriptions-item>
             <a-descriptions-item label="账号状态">
-              <a-tag :color="accountActive ? 'green' : 'orange'">
-                {{ accountActive ? '已激活' : '待激活' }}
-              </a-tag>
+              <sa-dict
+                :value="detail.account_status"
+                dict="doctor_account_status"
+                render="span"
+              />
             </a-descriptions-item>
             <a-descriptions-item label="创建方式">
               <sa-dict :value="detail.source_type" dict="task_source" render="span" />
@@ -116,9 +121,19 @@ const detail = ref({})
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
 const formatCurrency = (value) => `¥${formatNumber(Number(value || 0) / 100)}`
+const maskPhone = (value) =>
+  String(value || '').replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2') || '—'
 
 const accountActive = computed(() => {
   return ['active', 'bound'].includes(detail.value.account_status)
+})
+const accountDisabled = computed(
+  () => detail.value.account_status === 'disabled'
+)
+const accountAlertType = computed(() => {
+  if (accountActive.value) return 'success'
+  if (accountDisabled.value) return 'error'
+  return 'warning'
 })
 
 const progressRate = computed(() => {

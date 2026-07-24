@@ -1,17 +1,17 @@
 <template>
-  <div class="doctor-page">
+  <div class="certification-page">
     <header class="page-header">
       <div>
-        <h1>医生管理</h1>
-        <p>查看医生账号、执业信息、认证状态与累计计酬</p>
+        <h1>医生认证</h1>
+        <p>查看医生提交的执业认证资料并完成人工复审</p>
       </div>
     </header>
 
-    <a-alert type="info" show-icon class="account-tip">
-      名单导入或手动分配任务时，系统会按手机号自动创建医生账号。待激活医生使用绑定手机号登录小程序后，即可看到已分配任务；任务全部完成后，对应金额计入累计计酬。
+    <a-alert type="info" show-icon>
+      认证结果用于标识医生资质状态，不影响医生查看和执行已经分配的审核任务。
     </a-alert>
 
-    <a-alert v-if="tableError" type="error" show-icon class="table-error">
+    <a-alert v-if="tableError" type="error" show-icon>
       {{ tableError }}
       <template #action>
         <a-button size="small" @click="refresh">重新加载</a-button>
@@ -24,7 +24,7 @@
       :options="options"
       :columns="columns"
       :search-form="searchForm"
-      class="doctor-table"
+      class="certification-table"
       @reset-search="resetSearchForm"
     >
       <template #tableSearch>
@@ -59,19 +59,16 @@
         </a-col>
       </template>
 
-      <template #name="{ record }">
-        <strong class="name-cell" :title="record.name">
-          {{ record.name || '—' }}
-        </strong>
-      </template>
-
-      <template #phone="{ record }">
-        <span>{{ maskPhone(record.phone) }}</span>
+      <template #doctor="{ record }">
+        <div class="doctor-cell">
+          <strong :title="record.name">{{ record.name || '—' }}</strong>
+          <span>{{ maskPhone(record.phone) }}</span>
+        </div>
       </template>
 
       <template #hospital="{ record }">
-        <span class="ellipsis-text" :title="normalizePractice(record.hospital)">
-          {{ normalizePractice(record.hospital) }}
+        <span class="ellipsis-text" :title="practiceValue(record.hospital)">
+          {{ practiceValue(record.hospital) }}
         </span>
       </template>
 
@@ -81,60 +78,40 @@
         </span>
       </template>
 
-      <template #accrued_reward_cent="{ record }">
-        <span class="money-text">{{ formatCurrency(record.accrued_reward_cent) }}</span>
+      <template #certificate_no="{ record }">
+        <span class="ellipsis-text" :title="record.certificate_no || '—'">
+          {{ record.certificate_no || '—' }}
+        </span>
       </template>
 
-      <template #operationAfterExtend="{ record }">
-        <a-popconfirm
-          :content="accountStatusConfirmText(record)"
-          position="bottom"
-          @ok="changeAccountStatus(record)"
-        >
-          <a-link
-            :status="isDoctorDisabled(record) ? 'success' : 'danger'"
-            :disabled="updatingIds.has(record.id)"
-          >
-            {{
-              updatingIds.has(record.id)
-                ? '处理中'
-                : isDoctorDisabled(record)
-                  ? '开启'
-                  : '禁用'
-            }}
-          </a-link>
-        </a-popconfirm>
+      <template #submit_time="{ record }">
+        {{ record.certification_submit_time || '—' }}
       </template>
     </sa-table>
 
-    <doctor-detail ref="detailRef" />
+    <certification-detail ref="detailRef" @success="refresh" />
   </div>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { Message } from '@arco-design/web-vue'
-import doctorApi from '@/api/product/doctor'
-import DoctorDetail from './view.vue'
+import certificationApi from '@/api/product/doctor-certification'
+import CertificationDetail from './view.vue'
 
 const crudRef = ref()
 const detailRef = ref()
 const tableError = ref('')
-const updatingIds = reactive(new Set())
-
 const searchForm = ref({
   keyword: '',
   account_status: '',
   certification_status: ''
 })
 
-const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
-const formatCurrency = (value) => `¥${formatNumber(Number(value || 0) / 100)}`
 const maskPhone = (value) =>
   String(value || '').replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2') || '—'
 
-const normalizePractice = (value, fallback = '待补充') => {
-  return value && value !== '待补充' ? value : fallback
+const practiceValue = (value) => {
+  return value && value !== '待补充' ? value : '待补充'
 }
 
 const practiceSubtitle = (record) => {
@@ -146,14 +123,14 @@ const practiceSubtitle = (record) => {
 
 const loadList = async (params) => {
   try {
-    const response = await doctorApi.getPageList(params)
+    const response = await certificationApi.getPageList(params)
     if (response.code === 200) {
       tableError.value = ''
       return response
     }
-    tableError.value = response.message || '医生列表加载失败，请重新加载'
+    tableError.value = response.message || '医生认证列表加载失败，请重新加载'
   } catch {
-    tableError.value = '医生列表加载失败，请检查网络后重试'
+    tableError.value = '医生认证列表加载失败，请检查网络后重试'
   }
 
   return {
@@ -167,7 +144,7 @@ const options = reactive({
   api: loadList,
   pageLayout: 'normal',
   showSort: false,
-  operationColumnWidth: 150,
+  operationColumnWidth: 80,
   view: {
     show: true,
     text: '详情',
@@ -176,10 +153,10 @@ const options = reactive({
 })
 
 const columns = reactive([
-  { title: '姓名', dataIndex: 'name', width: 110, fixed: 'left' },
-  { title: '手机号', dataIndex: 'phone', width: 130 },
+  { title: '医生', dataIndex: 'doctor', width: 150, fixed: 'left' },
   { title: '医院名称', dataIndex: 'hospital', width: 220 },
   { title: '科室 & 职称', dataIndex: 'department_title', width: 160 },
+  { title: '执业证书编号', dataIndex: 'certificate_no', width: 170 },
   {
     title: '账号状态',
     dataIndex: 'account_status',
@@ -196,48 +173,10 @@ const columns = reactive([
     width: 100,
     align: 'center'
   },
-  {
-    title: '累计计酬',
-    dataIndex: 'accrued_reward_cent',
-    width: 110,
-    align: 'right'
-  }
+  { title: '提交时间', dataIndex: 'submit_time', width: 180 }
 ])
 
 const refresh = () => crudRef.value?.refresh()
-const isDoctorDisabled = (record) => record.account_status === 'disabled'
-
-const accountStatusConfirmText = (record) => {
-  if (isDoctorDisabled(record)) {
-    return record.activation_time
-      ? '开启后医生可重新登录小程序并接收新任务，确认开启吗？'
-      : '开启后账号恢复为待激活状态，并可重新接收任务，确认开启吗？'
-  }
-
-  return '禁用后医生将无法登录小程序或接收新任务，历史任务和计酬仍会保留。确认禁用吗？'
-}
-
-const changeAccountStatus = async (record) => {
-  const action = isDoctorDisabled(record) ? 'enable' : 'disable'
-  updatingIds.add(record.id)
-
-  try {
-    const response = await doctorApi.changeAccountStatus({
-      id: record.id,
-      action
-    })
-    if (response.code !== 200) return
-
-    record.account_status = response.data.account_status
-    Message.success(response.message)
-    await refresh()
-  } catch {
-    Message.error('医生账号状态更新失败，请稍后重试')
-  } finally {
-    updatingIds.delete(record.id)
-  }
-}
-
 const resetSearchForm = () => {
   Object.assign(searchForm.value, {
     keyword: '',
@@ -250,7 +189,7 @@ onMounted(refresh)
 </script>
 
 <style scoped lang="less">
-.doctor-page {
+.certification-page {
   display: flex;
   min-width: 0;
   flex-direction: column;
@@ -279,18 +218,33 @@ onMounted(refresh)
   }
 }
 
-.account-tip,
-.table-error {
-  flex: 0 0 auto;
-}
-
-.doctor-table {
+.certification-table {
   min-width: 0;
 }
 
-.name-cell {
-  color: var(--color-text-1);
-  font-weight: 500;
+.doctor-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+
+  strong,
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  strong {
+    color: var(--color-text-1);
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  span {
+    color: var(--color-text-3);
+    font-size: 12px;
+  }
 }
 
 .ellipsis-text {
@@ -300,17 +254,12 @@ onMounted(refresh)
   white-space: nowrap;
 }
 
-.money-text {
-  color: var(--color-text-1);
-  font-weight: 500;
-}
-
 @media (max-width: 575px) {
   .page-header {
     padding: 16px;
   }
 
-  .doctor-table {
+  .certification-table {
     :deep(.arco-card-body > div:first-child > .arco-row) {
       flex-direction: column;
       gap: 12px;

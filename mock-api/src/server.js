@@ -17,6 +17,19 @@ const reviewIssueTypes = [
   'imprecise_expression'
 ]
 const withdrawalStatuses = ['pending', 'exported']
+const doctorAccountStatuses = ['pending_activation', 'active', 'disabled']
+const doctorCertificationStatuses = [
+  'unsubmitted',
+  'pending',
+  'approved',
+  'rejected'
+]
+const doctorConfigTypes = ['hospital', 'department', 'position']
+const doctorConfigTypeLabels = {
+  hospital: '医院',
+  department: '科室',
+  position: '职务'
+}
 
 const dataPath = fileURLToPath(new URL('../data/bootstrap.json', import.meta.url))
 const fixtures = JSON.parse(readFileSync(dataPath, 'utf8'))
@@ -27,17 +40,34 @@ const tasks = JSON.parse(readFileSync(tasksPath, 'utf8'))
 const doctorsPath = fileURLToPath(new URL('../data/doctors.json', import.meta.url))
 const doctorFixture = JSON.parse(readFileSync(doctorsPath, 'utf8'))
 const doctors = buildDoctors(doctorFixture)
+const doctorCertificationsPath = fileURLToPath(
+  new URL('../data/doctor-certifications.json', import.meta.url)
+)
+const doctorCertificationsFixture = JSON.parse(
+  readFileSync(doctorCertificationsPath, 'utf8')
+)
+const doctorCertifications = buildDoctorCertifications(
+  doctorCertificationsFixture,
+  doctors
+)
 const reviewsPath = fileURLToPath(new URL('../data/reviews.json', import.meta.url))
 const reviewFixture = JSON.parse(readFileSync(reviewsPath, 'utf8'))
 const reviews = buildReviews(reviewFixture)
 const withdrawalsPath = fileURLToPath(new URL('../data/withdrawals.json', import.meta.url))
 const withdrawals = JSON.parse(readFileSync(withdrawalsPath, 'utf8'))
+const doctorConfigPath = fileURLToPath(
+  new URL('../data/doctor-config.json', import.meta.url)
+)
+let doctorConfigRows = JSON.parse(readFileSync(doctorConfigPath, 'utf8'))
 workbenchFixture.doctors.total = doctors.length
 workbenchFixture.doctors.active = doctors.filter(
   (doctor) => doctor.account_status === 'active'
 ).length
 workbenchFixture.doctors.pending_activation = doctors.filter(
   (doctor) => doctor.account_status === 'pending_activation'
+).length
+workbenchFixture.doctors.disabled = doctors.filter(
+  (doctor) => doctor.account_status === 'disabled'
 ).length
 workbenchFixture.reviews.total = reviews.length
 workbenchFixture.reviews.approved = reviews.filter(
@@ -50,6 +80,9 @@ syncWithdrawalWorkbench()
 const importPreviews = new Map()
 let nextTaskId = Math.max(...tasks.map((task) => task.id)) + 1
 let nextDoctorId = Math.max(...doctors.map((doctor) => doctor.id)) + 1
+let nextDoctorConfigId =
+  doctorConfigRows.reduce((maxId, item) => Math.max(maxId, Number(item.id) || 0), 0) +
+  1
 
 app.use(cors())
 app.use(express.json({ limit: '12mb' }))
@@ -77,6 +110,55 @@ function formatDateTime(date = new Date()) {
     `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
     `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
   ].join(' ')
+}
+
+function normalizeDoctorConfigPayload(payload = {}, fallbackType = '') {
+  const type = String(payload.type || fallbackType).trim()
+  const name = String(payload.name || '').trim()
+  const region = String(payload.region || '').trim()
+  const level = String(payload.level || '').trim()
+  const remark = String(payload.remark || '').trim()
+  const sort = Number(payload.sort)
+  const status = String(payload.status || '1')
+
+  if (!doctorConfigTypes.includes(type)) {
+    return { error: '配置类型无效' }
+  }
+
+  const typeLabel = doctorConfigTypeLabels[type]
+  if (!name) {
+    return { error: `请输入${typeLabel}名称` }
+  }
+  if (name.length > 80) {
+    return { error: `${typeLabel}名称不能超过 80 个字符` }
+  }
+  if (region.length > 50) {
+    return { error: '所在地区不能超过 50 个字符' }
+  }
+  if (level.length > 30) {
+    return { error: '医院等级不能超过 30 个字符' }
+  }
+  if (remark.length > 200) {
+    return { error: '备注不能超过 200 个字符' }
+  }
+  if (!Number.isInteger(sort) || sort < 0 || sort > 9999) {
+    return { error: '显示顺序须为 0 至 9999 的整数' }
+  }
+  if (!['1', '2'].includes(status)) {
+    return { error: '状态值无效' }
+  }
+
+  return {
+    data: {
+      type,
+      name,
+      region: type === 'hospital' ? region : '',
+      level: type === 'hospital' ? level : '',
+      sort,
+      status,
+      remark
+    }
+  }
 }
 
 function buildDoctors(fixture = {}) {
@@ -176,6 +258,76 @@ function buildDoctors(fixture = {}) {
           : null
     })
   }
+
+  return records.sort((left, right) => left.id - right.id)
+}
+
+function mockIdentityCardNumber(doctorId) {
+  return `1101**********${String(1000 + Number(doctorId)).slice(-4)}`
+}
+
+function certificatePreviewImage(doctor, certification) {
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="420"><rect width="720" height="420" rx="20" fill="#f7f8fa"/><rect x="24" y="24" width="672" height="372" rx="14" fill="#ffffff" stroke="#c9cdd4"/><text x="56" y="82" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#1d2129">医师执业证书附件</text><text x="56" y="118" font-family="Arial, sans-serif" font-size="18" fill="#86909c">原型示意 · 非真实证件</text><line x1="56" y1="146" x2="664" y2="146" stroke="#e5e6eb"/><text x="56" y="198" font-family="Arial, sans-serif" font-size="22" fill="#4e5969">证件姓名：${doctor.name}</text><text x="56" y="244" font-family="Arial, sans-serif" font-size="22" fill="#4e5969">执业机构：${doctor.hospital}</text><text x="56" y="290" font-family="Arial, sans-serif" font-size="22" fill="#4e5969">证书编号：${certification.certificate_no}</text><rect x="56" y="326" width="608" height="42" rx="8" fill="#f2f3f5"/><text x="360" y="354" text-anchor="middle" font-family="Arial, sans-serif" font-size="17" fill="#86909c">仅用于后台功能与交互演示</text></svg>`
+  return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
+}
+
+function buildDoctorCertifications(fixture = [], doctorRows = []) {
+  const sourceRows = Array.isArray(fixture) ? fixture : []
+  const doctorMap = new Map(doctorRows.map((doctor) => [doctor.id, doctor]))
+  const seenDoctorIds = new Set()
+  const records = []
+
+  sourceRows.forEach((source) => {
+    const doctorId = Number(source.doctor_id)
+    const status = String(source.status || '')
+    if (
+      !doctorMap.has(doctorId) ||
+      seenDoctorIds.has(doctorId) ||
+      !doctorCertificationStatuses.includes(status) ||
+      status === 'unsubmitted'
+    ) {
+      return
+    }
+
+    const record = {
+      ...source,
+      id: Number(source.id),
+      doctor_id: doctorId,
+      status
+    }
+    records.push(record)
+    seenDoctorIds.add(doctorId)
+    doctorMap.get(doctorId).certification_status = status
+  })
+
+  let nextId =
+    records.reduce((maxId, record) => Math.max(maxId, Number(record.id) || 0), 0) +
+    1
+
+  doctorRows.forEach((doctor) => {
+    const status = doctor.certification_status
+    if (status === 'unsubmitted' || seenDoctorIds.has(doctor.id)) return
+
+    const reviewed = ['approved', 'rejected'].includes(status)
+    records.push({
+      id: nextId,
+      doctor_id: doctor.id,
+      certificate_type: '医师执业证书',
+      certificate_no: `MOCK-YZ-${String(doctor.id).padStart(6, '0')}`,
+      status,
+      submit_time: doctor.activation_time || doctor.create_time,
+      review_time: reviewed
+        ? doctor.last_login_time || doctor.activation_time || doctor.create_time
+        : null,
+      reviewer: reviewed ? '运营管理员' : '',
+      reject_reason:
+        status === 'rejected'
+          ? '提交信息与执业资料不一致，请核对后重新提交'
+          : ''
+    })
+    seenDoctorIds.add(doctor.id)
+    nextId += 1
+  })
 
   return records.sort((left, right) => left.id - right.id)
 }
@@ -542,6 +694,35 @@ function hydrateDoctor(doctor, includeTasks = false) {
   return result
 }
 
+function hydrateDoctorCertification(doctor, includeMaterials = false) {
+  const certification = doctorCertifications.find(
+    (record) => record.doctor_id === doctor.id
+  )
+  const result = {
+    ...hydrateDoctor(doctor),
+    certification_id: certification?.id || null,
+    certificate_type: certification?.certificate_type || '',
+    certificate_no: certification?.certificate_no || '',
+    certificate_holder_name: certification ? doctor.name : '',
+    id_card_number_masked: certification
+      ? mockIdentityCardNumber(doctor.id)
+      : '',
+    certificate_attachment_name: certification
+      ? `医师执业证书-${doctor.name}.jpg`
+      : '',
+    certification_submit_time: certification?.submit_time || null,
+    certification_review_time: certification?.review_time || null,
+    certification_reviewer: certification?.reviewer || '',
+    certification_reject_reason: certification?.reject_reason || ''
+  }
+
+  if (includeMaterials && certification) {
+    result.certificate_image_url = certificatePreviewImage(doctor, certification)
+  }
+
+  return result
+}
+
 function createTask(doctor, itemCount, sourceType, importBatchNo = null) {
   const id = nextTaskId
   nextTaskId += 1
@@ -673,6 +854,178 @@ app.get('/core/system/clearAllCache', (req, res) => {
 
 app.use('/core/product', requireAuth)
 
+app.get('/core/product/doctor-config/index', (req, res) => {
+  const type = String(req.query.type || '').trim()
+  const keyword = String(req.query.keyword || '').trim().toLowerCase()
+  const status =
+    req.query.status === 'all' ? '' : String(req.query.status || '').trim()
+
+  if (!doctorConfigTypes.includes(type)) {
+    res.json(failure(422, '请选择有效的配置类型'))
+    return
+  }
+
+  if (status && !['1', '2'].includes(status)) {
+    res.json(failure(422, '状态筛选值无效'))
+    return
+  }
+
+  const filteredRows = doctorConfigRows
+    .filter((item) => {
+      if (item.type !== type) return false
+      if (status && item.status !== status) return false
+      if (!keyword) return true
+
+      return [item.name, item.region, item.level, item.remark]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword))
+    })
+    .sort(
+      (left, right) =>
+        Number(left.sort) - Number(right.sort) || Number(left.id) - Number(right.id)
+    )
+
+  res.json(success(paginate(filteredRows, req.query)))
+})
+
+app.post('/core/product/doctor-config/save', (req, res) => {
+  const normalized = normalizeDoctorConfigPayload(req.body)
+
+  if (normalized.error) {
+    res.json(failure(422, normalized.error))
+    return
+  }
+
+  const duplicate = doctorConfigRows.find(
+    (item) =>
+      item.type === normalized.data.type &&
+      item.name.toLowerCase() === normalized.data.name.toLowerCase()
+  )
+
+  if (duplicate) {
+    res.json(
+      failure(
+        422,
+        `${doctorConfigTypeLabels[normalized.data.type]}名称已存在，请勿重复添加`
+      )
+    )
+    return
+  }
+
+  const now = formatDateTime()
+  const item = {
+    id: nextDoctorConfigId,
+    ...normalized.data,
+    create_time: now,
+    update_time: now
+  }
+  nextDoctorConfigId += 1
+  doctorConfigRows.push(item)
+
+  res.json(
+    success(item, `${doctorConfigTypeLabels[item.type]}新增成功`)
+  )
+})
+
+app.put('/core/product/doctor-config/update', (req, res) => {
+  const id = Number(req.query.id)
+
+  if (!Number.isInteger(id) || id <= 0) {
+    res.json(failure(422, '请提供有效的配置 ID'))
+    return
+  }
+
+  const item = doctorConfigRows.find((row) => row.id === id)
+  if (!item) {
+    res.json(failure(404, '未找到对应配置'))
+    return
+  }
+
+  const normalized = normalizeDoctorConfigPayload(req.body, item.type)
+  if (normalized.error) {
+    res.json(failure(422, normalized.error))
+    return
+  }
+
+  if (normalized.data.type !== item.type) {
+    res.json(failure(422, '不能修改配置类型'))
+    return
+  }
+
+  const duplicate = doctorConfigRows.find(
+    (row) =>
+      row.id !== id &&
+      row.type === item.type &&
+      row.name.toLowerCase() === normalized.data.name.toLowerCase()
+  )
+
+  if (duplicate) {
+    res.json(
+      failure(422, `${doctorConfigTypeLabels[item.type]}名称已存在，请更换名称`)
+    )
+    return
+  }
+
+  Object.assign(item, normalized.data, { update_time: formatDateTime() })
+  res.json(success(item, `${doctorConfigTypeLabels[item.type]}保存成功`))
+})
+
+app.delete('/core/product/doctor-config/destroy', (req, res) => {
+  const ids = Array.isArray(req.body?.ids)
+    ? [...new Set(req.body.ids.map(Number))].filter(
+        (id) => Number.isInteger(id) && id > 0
+      )
+    : []
+
+  if (ids.length === 0) {
+    res.json(failure(422, '请选择要删除的配置'))
+    return
+  }
+
+  const beforeCount = doctorConfigRows.length
+  doctorConfigRows = doctorConfigRows.filter((item) => !ids.includes(item.id))
+  const deletedCount = beforeCount - doctorConfigRows.length
+
+  if (deletedCount === 0) {
+    res.json(failure(404, '未找到要删除的配置'))
+    return
+  }
+
+  res.json(
+    success({ deleted_count: deletedCount }, `已删除 ${deletedCount} 项配置`)
+  )
+})
+
+app.post('/core/product/doctor-config/changeStatus', (req, res) => {
+  const id = Number(req.body?.id)
+  const status = String(req.body?.status || '')
+
+  if (!Number.isInteger(id) || id <= 0) {
+    res.json(failure(422, '请提供有效的配置 ID'))
+    return
+  }
+
+  if (!['1', '2'].includes(status)) {
+    res.json(failure(422, '状态值无效'))
+    return
+  }
+
+  const item = doctorConfigRows.find((row) => row.id === id)
+  if (!item) {
+    res.json(failure(404, '未找到对应配置'))
+    return
+  }
+
+  item.status = status
+  item.update_time = formatDateTime()
+  res.json(
+    success(
+      { id: item.id, status: item.status, update_time: item.update_time },
+      `${doctorConfigTypeLabels[item.type]}已${status === '1' ? '启用' : '停用'}`
+    )
+  )
+})
+
 app.get('/core/product/workbench/overview', (req, res) => {
   res.json(success(workbenchFixture))
 })
@@ -687,17 +1040,14 @@ app.get('/core/product/doctor/index', (req, res) => {
     req.query.certification_status === 'all'
       ? ''
       : String(req.query.certification_status || '').trim()
-  const allowedAccountStatuses = ['active', 'pending_activation']
-  const allowedCertificationStatuses = ['unsubmitted', 'pending', 'approved', 'rejected']
-
-  if (accountStatus && !allowedAccountStatuses.includes(accountStatus)) {
+  if (accountStatus && !doctorAccountStatuses.includes(accountStatus)) {
     res.json(failure(422, '账号状态筛选值无效'))
     return
   }
 
   if (
     certificationStatus &&
-    !allowedCertificationStatuses.includes(certificationStatus)
+    !doctorCertificationStatuses.includes(certificationStatus)
   ) {
     res.json(failure(422, '认证状态筛选值无效'))
     return
@@ -753,6 +1103,213 @@ app.get('/core/product/doctor/read', (req, res) => {
   res.json(success(hydrateDoctor(doctor, true)))
 })
 
+app.post('/core/product/doctor/status', (req, res) => {
+  const id = Number(req.body?.id)
+  const action = String(req.body?.action || '').trim()
+
+  if (!Number.isInteger(id) || id <= 0) {
+    res.json(failure(422, '请提供有效的医生 ID'))
+    return
+  }
+
+  if (!['disable', 'enable'].includes(action)) {
+    res.json(failure(422, '请选择有效的账号操作'))
+    return
+  }
+
+  const doctor = doctors.find((item) => item.id === id)
+  if (!doctor) {
+    res.json(failure(404, '未找到对应医生'))
+    return
+  }
+
+  if (action === 'disable' && doctor.account_status === 'disabled') {
+    res.json(failure(409, '医生账号已处于禁用状态'))
+    return
+  }
+
+  if (action === 'enable' && doctor.account_status !== 'disabled') {
+    res.json(failure(409, '医生账号当前不是禁用状态'))
+    return
+  }
+
+  doctor.account_status =
+    action === 'disable'
+      ? 'disabled'
+      : doctor.activation_time
+        ? 'active'
+        : 'pending_activation'
+
+  workbenchFixture.doctors.active = doctors.filter(
+    (item) => item.account_status === 'active'
+  ).length
+  workbenchFixture.doctors.pending_activation = doctors.filter(
+    (item) => item.account_status === 'pending_activation'
+  ).length
+  workbenchFixture.doctors.disabled = doctors.filter(
+    (item) => item.account_status === 'disabled'
+  ).length
+  workbenchFixture.updated_at = formatDateTime()
+
+  const restoredLabel =
+    doctor.account_status === 'active' ? '已激活' : '待激活'
+  res.json(
+    success(
+      hydrateDoctor(doctor),
+      action === 'disable'
+        ? '医生账号已禁用'
+        : `医生账号已开启，恢复为${restoredLabel}`
+    )
+  )
+})
+
+app.get('/core/product/doctor-certification/index', (req, res) => {
+  const keyword = String(req.query.keyword || '').trim().toLowerCase()
+  const accountStatus =
+    req.query.account_status === 'all'
+      ? ''
+      : String(req.query.account_status || '').trim()
+  const certificationStatus =
+    req.query.certification_status === 'all'
+      ? ''
+      : String(req.query.certification_status || '').trim()
+
+  if (accountStatus && !doctorAccountStatuses.includes(accountStatus)) {
+    res.json(failure(422, '账号状态筛选值无效'))
+    return
+  }
+
+  if (
+    certificationStatus &&
+    !doctorCertificationStatuses.includes(certificationStatus)
+  ) {
+    res.json(failure(422, '认证状态筛选值无效'))
+    return
+  }
+
+  const statusOrder = {
+    pending: 0,
+    rejected: 1,
+    approved: 2,
+    unsubmitted: 3
+  }
+  const filteredDoctors = doctors
+    .map(hydrateDoctorCertification)
+    .filter((doctor) => {
+      if (accountStatus && doctor.account_status !== accountStatus) return false
+      if (
+        certificationStatus &&
+        doctor.certification_status !== certificationStatus
+      ) {
+        return false
+      }
+      if (!keyword) return true
+
+      return [
+        doctor.name,
+        doctor.phone,
+        doctor.hospital,
+        doctor.department,
+        doctor.title,
+        doctor.certificate_no
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword))
+    })
+    .sort((left, right) => {
+      const statusDifference =
+        statusOrder[left.certification_status] -
+        statusOrder[right.certification_status]
+      if (statusDifference !== 0) return statusDifference
+      return String(right.certification_submit_time || '').localeCompare(
+        String(left.certification_submit_time || '')
+      )
+    })
+
+  res.json(success(paginate(filteredDoctors, req.query)))
+})
+
+app.get('/core/product/doctor-certification/read', (req, res) => {
+  const id = Number(req.query.id)
+
+  if (!Number.isInteger(id) || id <= 0) {
+    res.json(failure(422, '请提供有效的医生 ID'))
+    return
+  }
+
+  const doctor = doctors.find((item) => item.id === id)
+  if (!doctor) {
+    res.json(failure(404, '未找到对应医生'))
+    return
+  }
+
+  res.json(success(hydrateDoctorCertification(doctor, true)))
+})
+
+app.post('/core/product/doctor-certification/review', (req, res) => {
+  const id = Number(req.body?.id)
+  const result = String(req.body?.result || '').trim()
+  const reason = String(req.body?.reason || '').trim()
+  const materialConfirmed = req.body?.material_confirmed === true
+
+  if (!Number.isInteger(id) || id <= 0) {
+    res.json(failure(422, '请提供有效的医生 ID'))
+    return
+  }
+
+  if (!['approved', 'rejected'].includes(result)) {
+    res.json(failure(422, '请选择有效的认证结果'))
+    return
+  }
+
+  if (result === 'approved' && !materialConfirmed) {
+    res.json(failure(422, '请确认已完成认证材料核对'))
+    return
+  }
+
+  if (result === 'rejected' && !reason) {
+    res.json(failure(422, '请输入认证不通过原因'))
+    return
+  }
+
+  if (reason.length > 200) {
+    res.json(failure(422, '认证不通过原因不能超过 200 个字符'))
+    return
+  }
+
+  const doctor = doctors.find((item) => item.id === id)
+  if (!doctor) {
+    res.json(failure(404, '未找到对应医生'))
+    return
+  }
+
+  const certification = doctorCertifications.find(
+    (record) => record.doctor_id === id
+  )
+  if (!certification || doctor.certification_status === 'unsubmitted') {
+    res.json(failure(409, '医生尚未提交认证资料'))
+    return
+  }
+
+  if (doctor.certification_status !== 'pending') {
+    res.json(failure(409, '当前认证状态不可重复审核'))
+    return
+  }
+
+  const reviewTime = formatDateTime()
+  certification.status = result
+  certification.review_time = reviewTime
+  certification.reviewer = '运营管理员'
+  certification.reject_reason = result === 'rejected' ? reason : ''
+  doctor.certification_status = result
+
+  res.json(
+    success(
+      hydrateDoctorCertification(doctor, true),
+      result === 'approved' ? '医生认证已通过' : '医生认证已驳回'
+    )
+  )
+})
 app.get('/core/product/review/index', (req, res) => {
   const keyword = String(req.query.keyword || '').trim().toLowerCase()
   const result =
@@ -1058,6 +1615,11 @@ app.post('/core/product/task/save', (req, res) => {
     return
   }
 
+  if (doctor?.account_status === 'disabled') {
+    res.json(failure(422, '该医生账号已禁用，无法创建新任务'))
+    return
+  }
+
   const accountCreated = !doctor
 
   if (!doctor) {
@@ -1185,6 +1747,9 @@ app.post('/core/product/task/importPreview', (req, res) => {
     if (doctor && doctor.name !== doctorName) {
       errors.push(`手机号已绑定医生“${doctor.name}”`)
     }
+    if (doctor?.account_status === 'disabled') {
+      errors.push('医生账号已禁用，不能分配新任务')
+    }
 
     const valid = errors.length === 0
     const accountAction = doctor ? 'reuse' : 'create'
@@ -1251,6 +1816,21 @@ app.post('/core/product/task/importConfirm', (req, res) => {
 
   if (preview.summary.error_rows > 0) {
     res.json(failure(422, '名单仍有校验错误，请修正后重新上传'))
+    return
+  }
+
+  const disabledAccount = preview.rows.find((row) => {
+    const doctor = doctors.find((item) => item.phone === row.doctor_phone)
+    return doctor?.account_status === 'disabled'
+  })
+
+  if (disabledAccount) {
+    res.json(
+      failure(
+        422,
+        `手机号 ${disabledAccount.doctor_phone} 对应账号已禁用，无法继续分配任务`
+      )
+    )
     return
   }
 

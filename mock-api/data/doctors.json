@@ -107,7 +107,7 @@
       "hospital": "南京鼓楼医院",
       "department": "内分泌科",
       "title": "主治医师",
-      "account_status": "active",
+      "account_status": "disabled",
       "certification_status": "approved",
       "account_source": "import",
       "create_time": "2026-07-12 13:15:00",

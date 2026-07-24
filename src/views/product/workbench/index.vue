@@ -157,7 +157,8 @@ const overview = reactive({
   doctors: {
     total: 0,
     active: 0,
-    pending_activation: 0
+    pending_activation: 0,
+    disabled: 0
   },
   tasks: {
     total: 0,
@@ -208,7 +209,7 @@ const metrics = computed(() => [
     suffix: '人',
     icon: 'icon-user-group',
     tone: 'primary',
-    helper: `已激活 ${formatNumber(overview.doctors.active)} · 待激活 ${formatNumber(overview.doctors.pending_activation)}`
+    helper: `已激活 ${formatNumber(overview.doctors.active)} · 待激活 ${formatNumber(overview.doctors.pending_activation)} · 已禁用 ${formatNumber(overview.doctors.disabled)}`
   },
   {
     key: 'tasks',
