@@ -67,11 +67,9 @@
             description="医生尚未提交认证资料"
           />
           <a-descriptions v-else :column="1" bordered>
-            <a-descriptions-item label="证书类型">
+            <a-descriptions-item label="证件类型">
               {{ detail.certificate_type || '—' }}
-            </a-descriptions-item>
-            <a-descriptions-item label="证书编号">
-              {{ detail.certificate_no || '—' }}
+              <span class="cert-type-hint">医师资格证 / 医师执业证书 / 工作证·职称证任选其一</span>
             </a-descriptions-item>
             <a-descriptions-item label="证件姓名">
               {{ detail.certificate_holder_name || '—' }}
@@ -79,7 +77,7 @@
             <a-descriptions-item label="身份证号">
               {{ detail.id_card_number_masked || '—' }}
             </a-descriptions-item>
-            <a-descriptions-item label="执业证附件">
+            <a-descriptions-item label="证件照片">
               <div v-if="detail.certificate_image_url" class="certificate-file">
                 <a-image
                   class="certificate-preview"
@@ -90,7 +88,7 @@
                 />
                 <div class="certificate-meta">
                   <strong>{{ detail.certificate_attachment_name }}</strong>
-                  <span>原型使用脱敏示意图，正式系统接入医生上传的真实附件</span>
+                  <span>已添加水印，仅用于平台人工复审；原型使用脱敏示意图</span>
                 </div>
               </div>
               <span v-else>—</span>
@@ -311,6 +309,13 @@ defineExpose({ open })
     font-size: 15px;
     font-weight: 600;
   }
+}
+
+.cert-type-hint {
+  display: block;
+  margin-top: 2px;
+  color: var(--color-text-3);
+  font-size: 12px;
 }
 
 .certificate-file {

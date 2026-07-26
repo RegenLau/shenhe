@@ -86,7 +86,7 @@ const loading = ref(false)
 const typeLabels = {
   hospital: '医院',
   department: '科室',
-  position: '职务'
+  position: '职称'
 }
 
 const initialFormData = {

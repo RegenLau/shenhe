@@ -78,9 +78,9 @@
         </span>
       </template>
 
-      <template #certificate_no="{ record }">
-        <span class="ellipsis-text" :title="record.certificate_no || '—'">
-          {{ record.certificate_no || '—' }}
+      <template #certificate_type="{ record }">
+        <span class="ellipsis-text" :title="record.certificate_type || '—'">
+          {{ record.certificate_type || '—' }}
         </span>
       </template>
 
@@ -156,7 +156,7 @@ const columns = reactive([
   { title: '医生', dataIndex: 'doctor', width: 150, fixed: 'left' },
   { title: '医院名称', dataIndex: 'hospital', width: 220 },
   { title: '科室 & 职称', dataIndex: 'department_title', width: 160 },
-  { title: '执业证书编号', dataIndex: 'certificate_no', width: 170 },
+  { title: '证件类型', dataIndex: 'certificate_type', width: 140 },
   {
     title: '账号状态',
     dataIndex: 'account_status',

@@ -24,11 +24,12 @@ const doctorCertificationStatuses = [
   'approved',
   'rejected'
 ]
+const doctorCertificateTypes = ['医师资格证', '医师执业证书', '工作证 / 职称证']
 const doctorConfigTypes = ['hospital', 'department', 'position']
 const doctorConfigTypeLabels = {
   hospital: '医院',
   department: '科室',
-  position: '职务'
+  position: '职称'
 }
 
 const dataPath = fileURLToPath(new URL('../data/bootstrap.json', import.meta.url))
@@ -268,7 +269,8 @@ function mockIdentityCardNumber(doctorId) {
 }
 
 function certificatePreviewImage(doctor, certification) {
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="420"><rect width="720" height="420" rx="20" fill="#f7f8fa"/><rect x="24" y="24" width="672" height="372" rx="14" fill="#ffffff" stroke="#c9cdd4"/><text x="56" y="82" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#1d2129">医师执业证书附件</text><text x="56" y="118" font-family="Arial, sans-serif" font-size="18" fill="#86909c">原型示意 · 非真实证件</text><line x1="56" y1="146" x2="664" y2="146" stroke="#e5e6eb"/><text x="56" y="198" font-family="Arial, sans-serif" font-size="22" fill="#4e5969">证件姓名：${doctor.name}</text><text x="56" y="244" font-family="Arial, sans-serif" font-size="22" fill="#4e5969">执业机构：${doctor.hospital}</text><text x="56" y="290" font-family="Arial, sans-serif" font-size="22" fill="#4e5969">证书编号：${certification.certificate_no}</text><rect x="56" y="326" width="608" height="42" rx="8" fill="#f2f3f5"/><text x="360" y="354" text-anchor="middle" font-family="Arial, sans-serif" font-size="17" fill="#86909c">仅用于后台功能与交互演示</text></svg>`
+  const certificateType = certification.certificate_type || '证件'
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="720" height="420"><rect width="720" height="420" rx="20" fill="#f7f8fa"/><rect x="24" y="24" width="672" height="372" rx="14" fill="#ffffff" stroke="#c9cdd4"/><text x="56" y="82" font-family="Arial, sans-serif" font-size="28" font-weight="700" fill="#1d2129">${certificateType}附件</text><text x="56" y="118" font-family="Arial, sans-serif" font-size="18" fill="#86909c">原型示意 · 非真实证件</text><line x1="56" y1="146" x2="664" y2="146" stroke="#e5e6eb"/><text x="56" y="198" font-family="Arial, sans-serif" font-size="22" fill="#4e5969">证件姓名：${doctor.name}</text><text x="56" y="244" font-family="Arial, sans-serif" font-size="22" fill="#4e5969">执业机构：${doctor.hospital}</text><text x="56" y="290" font-family="Arial, sans-serif" font-size="22" fill="#4e5969">身份证号：${mockIdentityCardNumber(doctor.id)}</text><rect x="56" y="326" width="608" height="42" rx="8" fill="#f2f3f5"/><text x="360" y="354" text-anchor="middle" font-family="Arial, sans-serif" font-size="17" fill="#86909c">已添加水印 · 仅用于平台人工复审</text><text x="360" y="230" text-anchor="middle" font-family="Arial, sans-serif" font-size="52" fill="#1d2129" opacity="0.06" transform="rotate(-18 360 230)">希息健康 · 仅供复审</text></svg>`
   return `data:image/svg+xml;base64,${Buffer.from(svg).toString('base64')}`
 }
 
@@ -313,8 +315,8 @@ function buildDoctorCertifications(fixture = [], doctorRows = []) {
     records.push({
       id: nextId,
       doctor_id: doctor.id,
-      certificate_type: '医师执业证书',
-      certificate_no: `MOCK-YZ-${String(doctor.id).padStart(6, '0')}`,
+      certificate_type:
+        doctorCertificateTypes[doctor.id % doctorCertificateTypes.length],
       status,
       submit_time: doctor.activation_time || doctor.create_time,
       review_time: reviewed
@@ -750,13 +752,12 @@ function hydrateDoctorCertification(doctor, includeMaterials = false) {
     ...hydrateDoctor(doctor),
     certification_id: certification?.id || null,
     certificate_type: certification?.certificate_type || '',
-    certificate_no: certification?.certificate_no || '',
     certificate_holder_name: certification ? doctor.name : '',
     id_card_number_masked: certification
       ? mockIdentityCardNumber(doctor.id)
       : '',
     certificate_attachment_name: certification
-      ? `医师执业证书-${doctor.name}.jpg`
+      ? `${certification.certificate_type || '证件'}-${doctor.name}.jpg`
       : '',
     certification_submit_time: certification?.submit_time || null,
     certification_review_time: certification?.review_time || null,
@@ -1299,7 +1300,7 @@ app.get('/core/product/doctor-certification/index', (req, res) => {
         doctor.hospital,
         doctor.department,
         doctor.title,
-        doctor.certificate_no
+        doctor.certificate_type
       ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(keyword))

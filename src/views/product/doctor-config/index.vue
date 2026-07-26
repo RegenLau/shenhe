@@ -3,7 +3,7 @@
     <header class="page-header">
       <div class="page-heading">
         <h1>医生端配置</h1>
-        <p>维护医生首次登录小程序时可选择的医院、科室和职务</p>
+        <p>维护医生首次登录小程序时可选择的医院、科室和职称</p>
       </div>
     </header>
 
@@ -99,7 +99,7 @@ import EditForm from './edit.vue'
 const configTypes = [
   { key: 'hospital', label: '医院' },
   { key: 'department', label: '科室' },
-  { key: 'position', label: '职务' }
+  { key: 'position', label: '职称' }
 ]
 
 const activeType = ref('hospital')
