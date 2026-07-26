@@ -47,7 +47,19 @@
             <a-descriptions-item label="导出时间">
               {{ detail.exported_at || '—' }}
             </a-descriptions-item>
+            <a-descriptions-item label="打款时间">
+              {{ detail.paid_at || '—' }}
+            </a-descriptions-item>
           </a-descriptions>
+
+          <div v-if="detail.status === 'exported'" class="paid-action-bar">
+            <a-alert type="warning" show-icon class="paid-action-tip">
+              名单已导出给基金会。确认基金会完成打款后，在此登记打款结果，医生端将同步显示“已到账”。
+            </a-alert>
+            <a-button type="primary" :loading="paidLoading" @click="confirmMarkPaid">
+              登记基金会已打款
+            </a-button>
+          </div>
         </section>
 
         <section class="detail-section">
@@ -121,13 +133,17 @@
 
 <script setup>
 import { computed, ref } from 'vue'
+import { Message, Modal } from '@arco-design/web-vue'
 import withdrawalApi from '@/api/product/withdrawal'
+
+const emit = defineEmits(['updated'])
 
 const visible = ref(false)
 const loading = ref(false)
 const errorMessage = ref('')
 const withdrawalId = ref()
 const detail = ref({})
+const paidLoading = ref(false)
 
 const taskColumns = [
   {
@@ -191,6 +207,35 @@ const loadDetail = async () => {
   } finally {
     loading.value = false
   }
+}
+
+const markPaid = async () => {
+  paidLoading.value = true
+  try {
+    const response = await withdrawalApi.markPaid([detail.value.id])
+    if (response.code === 200) {
+      Message.success(response.message || '已登记基金会打款结果')
+      emit('updated')
+      await loadDetail()
+      return
+    }
+  } catch {
+    Message.error('打款结果登记失败，请检查网络后重试')
+  } finally {
+    paidLoading.value = false
+  }
+}
+
+const confirmMarkPaid = () => {
+  Modal.confirm({
+    title: '确认登记打款结果',
+    content: `确认基金会已向“${detail.value.payee_name}”完成 ${formatCurrency(
+      detail.value.amount_cent
+    )} 打款？登记后状态将变为“已打款”，不可撤销。`,
+    width: 'min(420px, calc(100vw - 32px))',
+    okText: '确认登记',
+    onOk: markPaid
+  })
 }
 
 const open = async (id) => {
@@ -265,6 +310,18 @@ defineExpose({ open })
 
 .task-empty {
   padding: 24px 0;
+}
+
+.paid-action-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 12px;
+  margin-top: 12px;
+}
+
+.paid-action-tip {
+  width: 100%;
 }
 
 @media (max-width: 575px) {

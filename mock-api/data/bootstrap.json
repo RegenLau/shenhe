@@ -138,27 +138,24 @@
       { "label": "未通过", "value": "rejected", "color": "red" }
     ],
     "review_issue_type": [
-      { "label": "用法用量错误", "value": "dosage_error", "color": "red" },
+      { "label": "内容不准确", "value": "content_inaccurate", "color": "red" },
       {
-        "label": "风险提示缺失",
-        "value": "risk_warning_missing",
+        "label": "表述不规范",
+        "value": "expression_nonstandard",
         "color": "orange"
       },
       {
-        "label": "相互作用遗漏",
-        "value": "interaction_omission",
+        "label": "信息不完整",
+        "value": "info_incomplete",
         "color": "orange"
       },
-      { "label": "超适应症用药", "value": "off_label_usage", "color": "purple" },
-      {
-        "label": "表述不准确",
-        "value": "imprecise_expression",
-        "color": "blue"
-      }
+      { "label": "存在安全风险", "value": "safety_risk", "color": "red" },
+      { "label": "其他", "value": "other", "color": "gray" }
     ],
     "withdrawal_export_status": [
       { "label": "待导出", "value": "pending", "color": "orange" },
-      { "label": "已导出", "value": "exported", "color": "blue" }
+      { "label": "已导出", "value": "exported", "color": "blue" },
+      { "label": "已打款", "value": "paid", "color": "green" }
     ],
     "notice_type": [
       { "label": "通知", "value": 1, "color": "blue" },

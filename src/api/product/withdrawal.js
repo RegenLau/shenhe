@@ -31,5 +31,13 @@ export default {
       data: {},
       responseType: 'blob'
     })
+  },
+
+  markPaid(ids = []) {
+    return request({
+      url: '/core/product/withdrawal/markPaid',
+      method: 'post',
+      data: { ids }
+    })
   }
 }

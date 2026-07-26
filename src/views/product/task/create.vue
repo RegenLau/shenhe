@@ -60,7 +60,7 @@
       </a-form-item>
 
       <a-form-item label="单条计酬">
-        <span class="readonly-text">¥50 / 条</span>
+        <span class="readonly-text">¥50 / 条（医生端显示 50 积分）</span>
       </a-form-item>
 
       <a-form-item label="预计总计酬">

@@ -59,6 +59,13 @@
         </a-col>
       </template>
 
+      <template #tableAfterButtons>
+        <a-button :loading="exporting" @click="confirmExportPending">
+          <template #icon><icon-download /></template>
+          导出未激活名单
+        </a-button>
+      </template>
+
       <template #name="{ record }">
         <strong class="name-cell" :title="record.name">
           {{ record.name || '—' }}
@@ -113,13 +120,15 @@
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
-import { Message } from '@arco-design/web-vue'
+import { Message, Modal } from '@arco-design/web-vue'
+import tool from '@/utils/tool'
 import doctorApi from '@/api/product/doctor'
 import DoctorDetail from './view.vue'
 
 const crudRef = ref()
 const detailRef = ref()
 const tableError = ref('')
+const exporting = ref(false)
 const updatingIds = reactive(new Set())
 
 const searchForm = ref({
@@ -142,6 +151,35 @@ const practiceSubtitle = (record) => {
     (value) => value && value !== '待补充'
   )
   return values.join(' · ') || '科室及职称待补充'
+}
+
+const exportPendingActivation = async () => {
+  exporting.value = true
+  try {
+    const response = await doctorApi.exportPendingActivation()
+    if (response?.status !== 200) {
+      Message.error('未激活名单导出失败，请稍后重试')
+      return
+    }
+
+    tool.download(response)
+    Message.success('未激活名单已导出，请交由药企代表跟进邀请医生注册')
+  } catch {
+    Message.error('未激活名单导出失败，请检查网络后重试')
+  } finally {
+    exporting.value = false
+  }
+}
+
+const confirmExportPending = () => {
+  Modal.confirm({
+    title: '确认导出未激活名单',
+    content:
+      '导出文件包含医生姓名与完整手机号，仅限交付药企代表用于邀请医生注册小程序，请妥善保管。',
+    width: 'min(420px, calc(100vw - 32px))',
+    okText: '确认导出',
+    onOk: exportPendingActivation
+  })
 }
 
 const loadList = async (params) => {

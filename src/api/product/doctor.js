@@ -23,5 +23,14 @@ export default {
       method: 'post',
       data
     })
+  },
+
+  exportPendingActivation() {
+    return request({
+      url: '/core/product/doctor/exportPendingActivation',
+      method: 'post',
+      data: {},
+      responseType: 'blob'
+    })
   }
 }

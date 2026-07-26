@@ -54,6 +54,9 @@
         <section class="detail-section">
           <h3>任务信息</h3>
           <a-descriptions :column="1" bordered>
+            <a-descriptions-item label="任务名称">
+              {{ detail.display_title || '—' }}
+            </a-descriptions-item>
             <a-descriptions-item label="任务编号">
               {{ detail.task_no }}
             </a-descriptions-item>
@@ -86,7 +89,8 @@
           <h3>计酬与时间</h3>
           <a-descriptions :column="1" bordered>
             <a-descriptions-item label="单条计酬">
-              {{ formatCurrency(detail.unit_reward_cent) }}
+              {{ formatCurrency(detail.unit_reward_cent) }}（医生端显示
+              {{ formatNumber(Number(detail.unit_reward_cent || 0) / 100) }} 积分）
             </a-descriptions-item>
             <a-descriptions-item label="任务总计酬">
               <strong class="money-text">

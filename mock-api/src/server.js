@@ -10,13 +10,13 @@ const port = Number(process.env.MOCK_API_PORT || 3010)
 const accessToken = 'mock-access-token'
 const refreshToken = 'mock-refresh-token'
 const reviewIssueTypes = [
-  'dosage_error',
-  'risk_warning_missing',
-  'interaction_omission',
-  'off_label_usage',
-  'imprecise_expression'
+  'content_inaccurate',
+  'expression_nonstandard',
+  'info_incomplete',
+  'safety_risk',
+  'other'
 ]
-const withdrawalStatuses = ['pending', 'exported']
+const withdrawalStatuses = ['pending', 'exported', 'paid']
 const doctorAccountStatuses = ['pending_activation', 'active', 'disabled']
 const doctorCertificationStatuses = [
   'unsubmitted',
@@ -77,6 +77,7 @@ workbenchFixture.reviews.rejected = reviews.filter(
   (review) => review.result === 'rejected'
 ).length
 syncWithdrawalWorkbench()
+syncCertificationWorkbench()
 const importPreviews = new Map()
 let nextTaskId = Math.max(...tasks.map((task) => task.id)) + 1
 let nextDoctorId = Math.max(...doctors.map((doctor) => doctor.id)) + 1
@@ -459,6 +460,11 @@ function summarizeWithdrawals(records = []) {
         summary.exported_amount_cent += amountCent
       }
 
+      if (withdrawal.export_status === 'paid') {
+        summary.paid_count += 1
+        summary.paid_amount_cent += amountCent
+      }
+
       return summary
     },
     {
@@ -467,7 +473,9 @@ function summarizeWithdrawals(records = []) {
       pending_count: 0,
       pending_amount_cent: 0,
       exported_count: 0,
-      exported_amount_cent: 0
+      exported_amount_cent: 0,
+      paid_count: 0,
+      paid_amount_cent: 0
     }
   )
 }
@@ -492,6 +500,8 @@ function syncWithdrawalWorkbench() {
     withdrawalSummary.pending_amount_cent
   workbenchFixture.settlement.exported_amount_cent =
     withdrawalSummary.exported_amount_cent
+  workbenchFixture.settlement.paid_amount_cent =
+    withdrawalSummary.paid_amount_cent
 
   if (withdrawalSummary.pending_count === 0) {
     if (todoIndex >= 0) workbenchFixture.todos.splice(todoIndex, 1)
@@ -515,6 +525,38 @@ function syncWithdrawalWorkbench() {
   }
 
   workbenchFixture.todos.push(withdrawalTodo)
+}
+
+function syncCertificationWorkbench() {
+  const pendingCount = doctorCertifications.filter(
+    (certification) => certification.status === 'pending'
+  ).length
+  const todoIndex = workbenchFixture.todos.findIndex(
+    (todo) => todo.id === 'certification_pending'
+  )
+
+  if (pendingCount === 0) {
+    if (todoIndex >= 0) workbenchFixture.todos.splice(todoIndex, 1)
+    return
+  }
+
+  const certTodo = {
+    id: 'certification_pending',
+    title: '医生认证待复审',
+    description: `${pendingCount} 位医生已提交执业认证资料，等待人工复审。`,
+    count: pendingCount,
+    level: 'info'
+  }
+
+  if (todoIndex >= 0) {
+    workbenchFixture.todos[todoIndex] = {
+      ...workbenchFixture.todos[todoIndex],
+      ...certTodo
+    }
+    return
+  }
+
+  workbenchFixture.todos.push(certTodo)
 }
 
 function maskPhone(value) {
@@ -557,6 +599,7 @@ function toPublicWithdrawal(withdrawal, includeSourceTasks = false) {
     status: withdrawal.export_status,
     applied_at: withdrawal.apply_time,
     exported_at: withdrawal.export_time,
+    paid_at: withdrawal.pay_time || null,
     doctor_id: withdrawal.doctor_id,
     doctor_name: withdrawal.doctor_name,
     payee_name: withdrawal.doctor_name,
@@ -644,12 +687,17 @@ function parseCsv(content) {
   return rows
 }
 
+function taskDisplayTitle(task) {
+  return `药品知识审核 · ${task.import_batch_no || task.task_no}`
+}
+
 function hydrateTask(task) {
   const doctor = doctors.find((item) => item.id === task.doctor_id)
-  if (!doctor) return { ...task }
+  if (!doctor) return { ...task, display_title: taskDisplayTitle(task) }
 
   return {
     ...task,
+    display_title: taskDisplayTitle(task),
     doctor_name: doctor.name,
     doctor_phone: doctor.phone,
     hospital: doctor.hospital,
@@ -1163,6 +1211,46 @@ app.post('/core/product/doctor/status', (req, res) => {
   )
 })
 
+app.post('/core/product/doctor/exportPendingActivation', (req, res) => {
+  const pendingDoctors = doctors
+    .filter((doctor) => doctor.account_status === 'pending_activation')
+    .map((doctor) => hydrateDoctor(doctor))
+    .sort((left, right) => left.id - right.id)
+
+  if (pendingDoctors.length === 0) {
+    res.json(failure(422, '当前没有待激活的医生账号'))
+    return
+  }
+
+  const exportTime = formatDateTime()
+  const sourceLabels = {
+    import: '名单导入',
+    manual: '手动分配任务',
+    mini_program: '小程序注册'
+  }
+  const rows = [
+    ['姓名', '手机号', '待接任务单数', '待接审核条数', '账号创建时间', '账号来源'],
+    ...pendingDoctors.map((doctor) => [
+      doctor.name,
+      toExcelText(doctor.phone, /^\d{11}$/),
+      doctor.task_count,
+      Math.max(doctor.assigned_item_count - doctor.completed_item_count, 0),
+      doctor.create_time,
+      sourceLabels[doctor.account_source] || doctor.account_source
+    ])
+  ]
+  const csv = rows.map((row) => row.map(escapeCsvCell).join(',')).join('\r\n')
+  const exportBatch = exportTime.replaceAll(/[-: ]/g, '')
+
+  res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="pending-doctors-${exportBatch}.csv"`
+  )
+  res.send(`﻿${csv}`)
+})
+
 app.get('/core/product/doctor-certification/index', (req, res) => {
   const keyword = String(req.query.keyword || '').trim().toLowerCase()
   const accountStatus =
@@ -1302,6 +1390,7 @@ app.post('/core/product/doctor-certification/review', (req, res) => {
   certification.reviewer = '运营管理员'
   certification.reject_reason = result === 'rejected' ? reason : ''
   doctor.certification_status = result
+  syncCertificationWorkbench()
 
   res.json(
     success(
@@ -1514,6 +1603,51 @@ app.post('/core/product/withdrawal/export', (req, res) => {
     `attachment; filename="foundation-withdrawals-${exportBatch}.csv"`
   )
   res.send(`\uFEFF${csv}`)
+})
+
+app.post('/core/product/withdrawal/markPaid', (req, res) => {
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number) : []
+
+  if (ids.length === 0 || ids.some((id) => !Number.isInteger(id) || id <= 0)) {
+    res.json(failure(422, '\u8BF7\u63D0\u4F9B\u6709\u6548\u7684\u63D0\u73B0\u7533\u8BF7 ID \u5217\u8868'))
+    return
+  }
+
+  const targets = withdrawals.filter((withdrawal) =>
+    ids.includes(withdrawal.id)
+  )
+
+  if (targets.length !== ids.length) {
+    res.json(failure(404, '\u90E8\u5206\u63D0\u73B0\u7533\u8BF7\u4E0D\u5B58\u5728\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5'))
+    return
+  }
+
+  const notExported = targets.find(
+    (withdrawal) => withdrawal.export_status !== 'exported'
+  )
+  if (notExported) {
+    res.json(
+      failure(
+        422,
+        `\u7533\u8BF7 ${notExported.withdrawal_no} \u5C1A\u672A\u5BFC\u51FA\u6216\u5DF2\u6253\u6B3E\uFF0C\u4EC5\u201C\u5DF2\u5BFC\u51FA\u201D\u7684\u7533\u8BF7\u53EF\u4EE5\u767B\u8BB0\u6253\u6B3E`
+      )
+    )
+    return
+  }
+
+  const payTime = formatDateTime()
+  targets.forEach((withdrawal) => {
+    withdrawal.export_status = 'paid'
+    withdrawal.pay_time = payTime
+  })
+  syncWithdrawalWorkbench()
+
+  res.json(
+    success(
+      { paid_count: targets.length, pay_time: payTime },
+      '\u5DF2\u767B\u8BB0\u57FA\u91D1\u4F1A\u6253\u6B3E\u7ED3\u679C'
+    )
+  )
 })
 
 app.get('/core/product/task/index', (req, res) => {

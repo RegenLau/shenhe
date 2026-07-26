@@ -8,7 +8,7 @@
     </header>
 
     <a-alert type="info" show-icon class="settlement-tip">
-      平台仅负责记录提现申请并导出待处理名单，不进行审批或打款。名单导出后由基金会线下审核支付，导出不代表已经付款。
+      平台仅负责记录提现申请并导出待处理名单，不进行审批或打款。名单导出后由基金会线下审核支付；基金会完成打款后，可在申请详情中登记“已打款”。医生端金额以积分展示，1 积分 = 1 元。
     </a-alert>
 
     <a-alert v-if="summaryError" type="error" show-icon class="summary-error">
@@ -33,12 +33,21 @@
           <small>当前待处理申请合计</small>
         </article>
         <article class="metric-card">
-          <span>已导出金额</span>
+          <span>已导出待打款</span>
           <strong>
             {{ summaryLoaded ? formatCurrency(summary.exported_amount_cent) : '—' }}
           </strong>
           <small>
-            {{ summaryLoaded ? `共 ${formatNumber(summary.exported_count)} 笔` : '—' }}
+            {{ summaryLoaded ? `共 ${formatNumber(summary.exported_count)} 笔，等待基金会打款` : '—' }}
+          </small>
+        </article>
+        <article class="metric-card">
+          <span>已打款金额</span>
+          <strong>
+            {{ summaryLoaded ? formatCurrency(summary.paid_amount_cent) : '—' }}
+          </strong>
+          <small>
+            {{ summaryLoaded ? `共 ${formatNumber(summary.paid_count)} 笔，基金会已完成支付` : '—' }}
           </small>
         </article>
       </section>
@@ -118,7 +127,7 @@
       </template>
     </sa-table>
 
-    <withdrawal-detail ref="detailRef" />
+    <withdrawal-detail ref="detailRef" @updated="handleDetailUpdated" />
   </div>
 </template>
 
@@ -146,7 +155,9 @@ const summary = reactive({
   pending_count: 0,
   pending_amount_cent: 0,
   exported_count: 0,
-  exported_amount_cent: 0
+  exported_amount_cent: 0,
+  paid_count: 0,
+  paid_amount_cent: 0
 })
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
@@ -259,6 +270,10 @@ const columns = reactive([
 ])
 
 const refresh = () => crudRef.value?.refresh()
+const handleDetailUpdated = () => {
+  refresh()
+  loadSummary()
+}
 const resetSearchForm = () => {
   Object.assign(searchForm.value, {
     keyword: '',
@@ -316,8 +331,14 @@ onMounted(() => {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 12px;
+}
+
+@media (max-width: 1023px) {
+  .summary-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 .metric-card {
