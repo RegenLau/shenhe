@@ -82,6 +82,9 @@
             <a-descriptions-item label="导入批次">
               {{ detail.import_batch_no || '—' }}
             </a-descriptions-item>
+            <a-descriptions-item label="导入日期">
+              {{ detail.import_date || '—' }}
+            </a-descriptions-item>
           </a-descriptions>
         </section>
 

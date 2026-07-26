@@ -709,11 +709,18 @@ function taskDisplayTitle(task) {
 
 function hydrateTask(task) {
   const doctor = doctors.find((item) => item.id === task.doctor_id)
-  if (!doctor) return { ...task, display_title: taskDisplayTitle(task) }
+  if (!doctor) {
+    return {
+      ...task,
+      display_title: taskDisplayTitle(task),
+      import_date: taskImportDate(task)
+    }
+  }
 
   return {
     ...task,
     display_title: taskDisplayTitle(task),
+    import_date: taskImportDate(task),
     doctor_name: doctor.name,
     doctor_phone: doctor.phone,
     hospital: doctor.hospital,
@@ -786,7 +793,7 @@ function hydrateDoctorCertification(doctor, includeMaterials = false) {
   return result
 }
 
-function createTask(doctor, itemCount, sourceType, importBatchNo = null) {
+function createTask(doctor, itemCount, sourceType, importBatchNo = null, importDate = null) {
   const id = nextTaskId
   nextTaskId += 1
   const createTime = formatDateTime()
@@ -803,6 +810,7 @@ function createTask(doctor, itemCount, sourceType, importBatchNo = null) {
     account_status: doctor.account_status,
     source_type: sourceType,
     import_batch_no: importBatchNo,
+    import_date: importDate,
     item_count: itemCount,
     completed_count: 0,
     unit_reward_cent: 5000,
@@ -812,6 +820,41 @@ function createTask(doctor, itemCount, sourceType, importBatchNo = null) {
     start_time: null,
     complete_time: null
   }
+}
+
+function normalizeImportDate(value) {
+  const text = String(value || '').trim()
+  const match = text.match(/^(\d{4})([-/])(\d{1,2})\2(\d{1,2})$/)
+  if (!match) return null
+
+  const year = Number(match[1])
+  const month = Number(match[3])
+  const day = Number(match[4])
+  const date = new Date(Date.UTC(year, month - 1, day))
+  if (
+    date.getUTCFullYear() !== year ||
+    date.getUTCMonth() !== month - 1 ||
+    date.getUTCDate() !== day
+  ) {
+    return null
+  }
+
+  return `${match[1]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function taskImportDate(task) {
+  if (task.source_type !== 'import') return null
+  return task.import_date || String(task.create_time || '').slice(0, 10) || null
+}
+
+function findImportedTask(doctorPhone, importDate) {
+  if (!doctorPhone || !importDate) return null
+  return (
+    tasks.find(
+      (task) =>
+        task.doctor_phone === doctorPhone && taskImportDate(task) === importDate
+    ) || null
+  )
 }
 
 function updateWorkbench(itemCount, newDoctorCount = 0) {
@@ -1880,19 +1923,40 @@ app.post('/core/product/task/importPreview', (req, res) => {
   const nameIndex = header.findIndex((value) => ['姓名', '医生姓名'].includes(value))
   const phoneIndex = header.indexOf('手机号')
   const countIndex = header.findIndex((value) => ['任务数量', '任务数'].includes(value))
+  const dateIndex = header.findIndex((value) => ['导入日期', '日期'].includes(value))
 
-  if ([nameIndex, phoneIndex, countIndex].some((index) => index < 0)) {
-    res.json(failure(422, '模板字段不完整，必须包含姓名、手机号和任务数量'))
+  if ([nameIndex, phoneIndex, countIndex, dateIndex].some((index) => index < 0)) {
+    res.json(
+      failure(422, '模板字段不完整，必须包含姓名、手机号、任务数量和导入日期')
+    )
     return
   }
 
-  const phoneRows = new Map()
+  const phoneDateRows = new Map()
+  const phoneNames = new Map()
+  const phoneFirstRow = new Map()
   csvRows.slice(1).forEach((values, index) => {
     const phone = String(values[phoneIndex] || '').trim()
     if (!phone) return
-    const rowNumbers = phoneRows.get(phone) || []
-    rowNumbers.push(index + 2)
-    phoneRows.set(phone, rowNumbers)
+
+    const rowNo = index + 2
+    if (!phoneFirstRow.has(phone)) {
+      phoneFirstRow.set(phone, rowNo)
+    }
+
+    const name = String(values[nameIndex] || '').trim()
+    if (name) {
+      const names = phoneNames.get(phone) || new Set()
+      names.add(name)
+      phoneNames.set(phone, names)
+    }
+
+    const importDate = normalizeImportDate(values[dateIndex])
+    if (!importDate) return
+    const key = `${phone}|${importDate}`
+    const rowNumbers = phoneDateRows.get(key) || []
+    rowNumbers.push(rowNo)
+    phoneDateRows.set(key, rowNumbers)
   })
 
   const rows = csvRows.slice(1).map((values, index) => {
@@ -1901,6 +1965,8 @@ app.post('/core/product/task/importPreview', (req, res) => {
     const doctorPhone = String(values[phoneIndex] || '').trim()
     const itemCountText = String(values[countIndex] || '').trim()
     const itemCount = Number(itemCountText)
+    const importDateText = String(values[dateIndex] || '').trim()
+    const importDate = normalizeImportDate(importDateText)
     const errors = []
 
     if (!doctorName) {
@@ -1919,8 +1985,26 @@ app.post('/core/product/task/importPreview', (req, res) => {
       errors.push('单个医生任务数量不能超过 1000')
     }
 
-    if (doctorPhone && (phoneRows.get(doctorPhone)?.length || 0) > 1) {
-      errors.push('手机号在名单中重复')
+    if (!importDateText) {
+      errors.push('导入日期不能为空')
+    } else if (!importDate) {
+      errors.push('导入日期格式须为 2026-07-26 这样的有效日期')
+    }
+
+    if (
+      doctorPhone &&
+      importDate &&
+      (phoneDateRows.get(`${doctorPhone}|${importDate}`)?.length || 0) > 1
+    ) {
+      errors.push('该医生同一导入日期在名单中重复')
+    }
+
+    if (doctorPhone && (phoneNames.get(doctorPhone)?.size || 0) > 1) {
+      errors.push('同一手机号在名单中的姓名不一致')
+    }
+
+    if (importDate && findImportedTask(doctorPhone, importDate)) {
+      errors.push(`该医生在 ${importDate} 已导入过任务，请勿重复导入`)
     }
 
     const doctor = doctors.find((item) => item.phone === doctorPhone)
@@ -1932,13 +2016,15 @@ app.post('/core/product/task/importPreview', (req, res) => {
     }
 
     const valid = errors.length === 0
-    const accountAction = doctor ? 'reuse' : 'create'
+    const accountAction =
+      doctor || phoneFirstRow.get(doctorPhone) !== rowNo ? 'reuse' : 'create'
 
     return {
       row_no: rowNo,
       doctor_name: doctorName,
       doctor_phone: doctorPhone,
       item_count: Number.isFinite(itemCount) ? itemCount : 0,
+      import_date: importDate || importDateText,
       total_reward_cent: valid ? itemCount * 5000 : 0,
       account_action: accountAction,
       validation_status: valid ? 'valid' : 'invalid',
@@ -2029,6 +2115,20 @@ app.post('/core/product/task/importConfirm', (req, res) => {
     return
   }
 
+  const duplicateImport = preview.rows.find((row) =>
+    findImportedTask(row.doctor_phone, row.import_date)
+  )
+
+  if (duplicateImport) {
+    res.json(
+      failure(
+        422,
+        `手机号 ${duplicateImport.doctor_phone} 在导入日期 ${duplicateImport.import_date} 已有导入记录，请重新校验名单`
+      )
+    )
+    return
+  }
+
   const batchNo = `DR${formatDateTime().slice(0, 10).replaceAll('-', '')}${String(
     Date.now()
   ).slice(-5)}`
@@ -2060,7 +2160,7 @@ app.post('/core/product/task/importConfirm', (req, res) => {
       doctors.push(doctor)
     }
 
-    const task = createTask(doctor, row.item_count, 'import', batchNo)
+    const task = createTask(doctor, row.item_count, 'import', batchNo, row.import_date)
     tasks.push(task)
     createdTasks.push(task)
   })
@@ -2089,8 +2189,8 @@ app.post('/core/product/task/importConfirm', (req, res) => {
 
 app.get('/core/product/task/template', (req, res) => {
   const csv = [
-    '姓名,手机号,任务数量',
-    '示例医生,13800000000,20'
+    '医生姓名,手机号,任务数量,导入日期',
+    '示例医生,13800000000,20,2026-07-26'
   ].join('\r\n')
 
   res.setHeader('Content-Type', 'text/csv; charset=utf-8')

@@ -16,7 +16,9 @@
 
     <section v-if="currentStep === 1" class="step-content">
       <a-alert type="info" show-icon>
-        模板仅需填写医生姓名、手机号和任务数量。单条审核任务固定 50 积分。
+        模板需填写医生姓名、手机号、任务数量和导入日期（填写如
+        2026-07-26），单条审核任务固定 50
+        积分。同一医生同一导入日期不能重复导入，日期不同可再次导入。
       </a-alert>
 
       <a-upload
@@ -42,6 +44,7 @@
           <span>医生姓名</span>
           <span>手机号</span>
           <span>任务数量</span>
+          <span>导入日期</span>
         </div>
       </div>
 
@@ -59,7 +62,7 @@
     <section v-else-if="currentStep === 2" class="step-content">
       <div class="summary-grid">
         <div>
-          <span>名单人数</span>
+          <span>名单行数</span>
           <strong>{{ formatNumber(preview.summary.total_rows) }}</strong>
         </div>
         <div>
@@ -94,13 +97,18 @@
         :data="preview.rows"
         :pagination="false"
         :bordered="{ wrapper: true, cell: false }"
-        :scroll="{ x: 720 }"
+        :scroll="{ x: 860 }"
         row-key="row_no"
       >
         <template #columns>
           <a-table-column title="行号" data-index="row_no" :width="70" />
           <a-table-column title="医生姓名" data-index="doctor_name" :width="110" />
           <a-table-column title="手机号" data-index="doctor_phone" :width="130" />
+          <a-table-column title="导入日期" data-index="import_date" :width="120">
+            <template #cell="{ record }">
+              {{ record.import_date || '—' }}
+            </template>
+          </a-table-column>
           <a-table-column title="任务数量" data-index="item_count" :width="100">
             <template #cell="{ record }">
               {{ formatNumber(record.item_count) }} 条
