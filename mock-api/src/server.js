@@ -24,7 +24,7 @@ const doctorCertificationStatuses = [
   'approved',
   'rejected'
 ]
-const doctorCertificateTypes = ['医师资格证', '医师执业证书', '工作证 / 职称证']
+const doctorCertificateTypes = ['医师资格证', '医师执业证书']
 const doctorConfigTypes = ['hospital', 'department', 'position']
 const doctorConfigTypeLabels = {
   hospital: '医院',
@@ -198,6 +198,16 @@ function buildDoctors(fixture = {}) {
     '曹'
   ]
   const givenNames = ['雨欣', '浩然', '文博', '思远', '晓彤', '嘉宁', '子涵', '雅雯']
+  const givenNameGenders = [
+    'female',
+    'male',
+    'male',
+    'male',
+    'female',
+    'female',
+    'male',
+    'female'
+  ]
   const hospitals = [
     '北京市朝阳医院',
     '上海市第六人民医院',
@@ -241,6 +251,10 @@ function buildDoctors(fixture = {}) {
       department:
         accountStatus === 'active' ? departments[id % departments.length] : '待补充',
       title: accountStatus === 'active' ? titles[id % titles.length] : '待补充',
+      gender:
+        givenNameGenders[
+          Math.floor(nameIndex / surnames.length) % givenNameGenders.length
+        ],
       account_status: accountStatus,
       certification_status: certificationStatus,
       account_source:
@@ -690,7 +704,7 @@ function parseCsv(content) {
 }
 
 function taskDisplayTitle(task) {
-  return `药品知识审核 · ${task.import_batch_no || task.task_no}`
+  return `药品知识库审核 · ${task.import_batch_no || task.task_no}`
 }
 
 function hydrateTask(task) {
@@ -1150,6 +1164,69 @@ app.get('/core/product/doctor/read', (req, res) => {
   }
 
   res.json(success(hydrateDoctor(doctor, true)))
+})
+
+app.post('/core/product/doctor/save', (req, res) => {
+  const name = String(req.body?.name || '').trim()
+  const phone = String(req.body?.phone || '').trim()
+  const gender = String(req.body?.gender || '').trim()
+  const hospital = String(req.body?.hospital || '').trim()
+  const department = String(req.body?.department || '').trim()
+  const title = String(req.body?.title || '').trim()
+
+  if (!name || name.length > 30) {
+    res.json(failure(422, '请输入医生姓名（不超过 30 个字符）'))
+    return
+  }
+
+  if (!/^1[3-9]\d{9}$/.test(phone)) {
+    res.json(failure(422, '请输入 11 位有效手机号'))
+    return
+  }
+
+  if (!['male', 'female'].includes(gender)) {
+    res.json(failure(422, '请选择医生性别'))
+    return
+  }
+
+  if ([hospital, department, title].some((value) => value.length > 80)) {
+    res.json(failure(422, '执业信息单项不能超过 80 个字符'))
+    return
+  }
+
+  const existing = doctors.find((item) => item.phone === phone)
+  if (existing) {
+    res.json(
+      failure(409, `手机号 ${phone} 已绑定医生“${existing.name}”，请勿重复创建`)
+    )
+    return
+  }
+
+  const doctor = {
+    id: nextDoctorId,
+    name,
+    phone,
+    hospital: hospital || '待补充',
+    department: department || '待补充',
+    title: title || '待补充',
+    gender,
+    account_status: 'pending_activation',
+    certification_status: 'unsubmitted',
+    account_source: 'manual',
+    create_time: formatDateTime(),
+    activation_time: null,
+    last_login_time: null
+  }
+  nextDoctorId += 1
+  doctors.push(doctor)
+  updateWorkbench(0, 1)
+
+  res.json(
+    success(
+      hydrateDoctor(doctor),
+      '医生账号已创建，请通知医生使用该手机号登录小程序激活'
+    )
+  )
 })
 
 app.post('/core/product/doctor/status', (req, res) => {
@@ -1712,24 +1789,26 @@ app.get('/core/product/task/read', (req, res) => {
 
 app.get('/core/product/task/doctorOptions', (req, res) => {
   const options = doctors
-    .map((doctor) => ({ ...doctor }))
+    .map((doctor) => ({
+      id: doctor.id,
+      name: doctor.name,
+      phone: doctor.phone,
+      hospital: doctor.hospital,
+      department: doctor.department,
+      title: doctor.title,
+      account_status: doctor.account_status
+    }))
     .sort((left, right) => left.id - right.id)
 
   res.json(success(options))
 })
 
 app.post('/core/product/task/save', (req, res) => {
-  const doctorName = String(req.body?.doctor_name || '').trim()
-  const doctorPhone = String(req.body?.doctor_phone || '').trim()
+  const doctorId = Number(req.body?.doctor_id)
   const itemCount = Number(req.body?.item_count)
 
-  if (!doctorName) {
-    res.json(failure(422, '请输入医生姓名'))
-    return
-  }
-
-  if (!/^1\d{10}$/.test(doctorPhone)) {
-    res.json(failure(422, '请输入有效的 11 位医生手机号'))
+  if (!Number.isInteger(doctorId) || doctorId <= 0) {
+    res.json(failure(422, '请选择要分配任务的医生'))
     return
   }
 
@@ -1738,56 +1817,22 @@ app.post('/core/product/task/save', (req, res) => {
     return
   }
 
-  let doctor = doctors.find((item) => item.phone === doctorPhone)
+  const doctor = doctors.find((item) => item.id === doctorId)
 
-  if (doctor && doctor.name !== doctorName) {
-    res.json(
-      failure(
-        422,
-        `手机号 ${doctorPhone} 已绑定医生“${doctor.name}”，请核对姓名后再创建任务`
-      )
-    )
+  if (!doctor) {
+    res.json(failure(404, '未找到对应医生，请刷新后重新选择'))
     return
   }
 
-  if (doctor?.account_status === 'disabled') {
+  if (doctor.account_status === 'disabled') {
     res.json(failure(422, '该医生账号已禁用，无法创建新任务'))
     return
   }
 
-  const accountCreated = !doctor
-
-  if (!doctor) {
-    const createTime = formatDateTime()
-    doctor = {
-      id: nextDoctorId,
-      name: doctorName,
-      phone: doctorPhone,
-      hospital: '待补充',
-      department: '待补充',
-      title: '待补充',
-      account_status: 'pending_activation',
-      certification_status: 'unsubmitted',
-      account_source: 'manual',
-      create_time: createTime,
-      activation_time: null,
-      last_login_time: null
-    }
-    nextDoctorId += 1
-    doctors.push(doctor)
-  }
-
   const task = createTask(doctor, itemCount, 'manual')
   tasks.push(task)
-  updateWorkbench(itemCount, accountCreated ? 1 : 0)
-  res.json(
-    success(
-      hydrateTask(task),
-      accountCreated
-        ? '医生账号和任务已创建'
-        : '任务已创建'
-    )
-  )
+  updateWorkbench(itemCount, 0)
+  res.json(success(hydrateTask(task), '任务已创建'))
 })
 
 app.post('/core/product/task/importPreview', (req, res) => {
@@ -2002,6 +2047,7 @@ app.post('/core/product/task/importConfirm', (req, res) => {
         hospital: '待补充',
         department: '待补充',
         title: '待补充',
+        gender: null,
         account_status: 'pending_activation',
         certification_status: 'unsubmitted',
         account_source: 'import',

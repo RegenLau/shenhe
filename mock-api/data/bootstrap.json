@@ -1,7 +1,12 @@
 {
   "userInfo": {
-    "codes": ["*"],
-    "roles": ["R_SUPER", "R_ADMIN"],
+    "codes": [
+      "*"
+    ],
+    "roles": [
+      "R_SUPER",
+      "R_ADMIN"
+    ],
     "routers": [
       {
         "name": "productDoctor",
@@ -105,40 +110,120 @@
   },
   "dictionaries": {
     "data_status": [
-      { "label": "启用", "value": 1, "color": "green" },
-      { "label": "停用", "value": 2, "color": "gray" }
+      {
+        "label": "启用",
+        "value": 1,
+        "color": "green"
+      },
+      {
+        "label": "停用",
+        "value": 2,
+        "color": "gray"
+      }
     ],
     "task_status": [
-      { "label": "待开始", "value": "pending", "color": "gray" },
-      { "label": "进行中", "value": "in_progress", "color": "orange" },
-      { "label": "已完成", "value": "completed", "color": "green" }
+      {
+        "label": "待开始",
+        "value": "pending",
+        "color": "gray"
+      },
+      {
+        "label": "进行中",
+        "value": "in_progress",
+        "color": "orange"
+      },
+      {
+        "label": "已完成",
+        "value": "completed",
+        "color": "green"
+      }
     ],
     "task_source": [
-      { "label": "手动创建", "value": "manual", "color": "blue" },
-      { "label": "名单导入", "value": "import", "color": "purple" }
+      {
+        "label": "手动创建",
+        "value": "manual",
+        "color": "blue"
+      },
+      {
+        "label": "名单导入",
+        "value": "import",
+        "color": "purple"
+      }
     ],
     "doctor_account_status": [
-      { "label": "待激活", "value": "pending_activation", "color": "orange" },
-      { "label": "已激活", "value": "active", "color": "green" },
-      { "label": "已禁用", "value": "disabled", "color": "red" }
+      {
+        "label": "待激活",
+        "value": "pending_activation",
+        "color": "orange"
+      },
+      {
+        "label": "已激活",
+        "value": "active",
+        "color": "green"
+      },
+      {
+        "label": "已禁用",
+        "value": "disabled",
+        "color": "red"
+      }
     ],
     "doctor_certification_status": [
-      { "label": "未提交", "value": "unsubmitted", "color": "gray" },
-      { "label": "待审核", "value": "pending", "color": "orange" },
-      { "label": "已通过", "value": "approved", "color": "green" },
-      { "label": "未通过", "value": "rejected", "color": "red" }
+      {
+        "label": "未提交",
+        "value": "unsubmitted",
+        "color": "gray"
+      },
+      {
+        "label": "待审核",
+        "value": "pending",
+        "color": "orange"
+      },
+      {
+        "label": "已通过",
+        "value": "approved",
+        "color": "green"
+      },
+      {
+        "label": "未通过",
+        "value": "rejected",
+        "color": "red"
+      }
     ],
     "doctor_account_source": [
-      { "label": "名单导入", "value": "import", "color": "purple" },
-      { "label": "手动分配任务", "value": "manual", "color": "blue" },
-      { "label": "小程序注册", "value": "mini_program", "color": "green" }
+      {
+        "label": "名单导入",
+        "value": "import",
+        "color": "purple"
+      },
+      {
+        "label": "手动分配任务",
+        "value": "manual",
+        "color": "blue"
+      },
+      {
+        "label": "小程序注册",
+        "value": "mini_program",
+        "color": "green"
+      }
     ],
     "review_result": [
-      { "label": "已通过", "value": "approved", "color": "green" },
-      { "label": "未通过", "value": "rejected", "color": "red" }
+      {
+        "label": "已通过",
+        "value": "approved",
+        "color": "green"
+      },
+      {
+        "label": "未通过",
+        "value": "rejected",
+        "color": "red"
+      }
     ],
     "review_issue_type": [
-      { "label": "内容不准确", "value": "content_inaccurate", "color": "red" },
+      {
+        "label": "内容不准确",
+        "value": "content_inaccurate",
+        "color": "red"
+      },
       {
         "label": "表述不规范",
         "value": "expression_nonstandard",
@@ -149,17 +234,57 @@
         "value": "info_incomplete",
         "color": "orange"
       },
-      { "label": "存在安全风险", "value": "safety_risk", "color": "red" },
-      { "label": "其他", "value": "other", "color": "gray" }
+      {
+        "label": "存在安全风险",
+        "value": "safety_risk",
+        "color": "red"
+      },
+      {
+        "label": "其他",
+        "value": "other",
+        "color": "gray"
+      }
     ],
     "withdrawal_export_status": [
-      { "label": "待导出", "value": "pending", "color": "orange" },
-      { "label": "已导出", "value": "exported", "color": "blue" },
-      { "label": "已打款", "value": "paid", "color": "green" }
+      {
+        "label": "待导出",
+        "value": "pending",
+        "color": "orange"
+      },
+      {
+        "label": "已导出",
+        "value": "exported",
+        "color": "blue"
+      },
+      {
+        "label": "已打款",
+        "value": "paid",
+        "color": "green"
+      }
     ],
     "notice_type": [
-      { "label": "通知", "value": 1, "color": "blue" },
-      { "label": "公告", "value": 2, "color": "orange" }
+      {
+        "label": "通知",
+        "value": 1,
+        "color": "blue"
+      },
+      {
+        "label": "公告",
+        "value": 2,
+        "color": "orange"
+      }
+    ],
+    "doctor_gender": [
+      {
+        "label": "男",
+        "value": "male",
+        "color": "blue"
+      },
+      {
+        "label": "女",
+        "value": "female",
+        "color": "purple"
+      }
     ]
   },
   "statistics": {
@@ -169,8 +294,24 @@
     "operate": 1290
   },
   "loginChart": {
-    "login_date": ["07-09", "07-10", "07-11", "07-12", "07-13", "07-14", "07-15"],
-    "login_count": [42, 58, 51, 76, 69, 83, 91]
+    "login_date": [
+      "07-09",
+      "07-10",
+      "07-11",
+      "07-12",
+      "07-13",
+      "07-14",
+      "07-15"
+    ],
+    "login_count": [
+      42,
+      58,
+      51,
+      76,
+      69,
+      83,
+      91
+    ]
   },
   "loginLogs": [
     {

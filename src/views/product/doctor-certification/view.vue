@@ -69,7 +69,7 @@
           <a-descriptions v-else :column="1" bordered>
             <a-descriptions-item label="证件类型">
               {{ detail.certificate_type || '—' }}
-              <span class="cert-type-hint">医师资格证 / 医师执业证书 / 工作证·职称证任选其一</span>
+              <span class="cert-type-hint">医师资格证 / 医师执业证书任选其一</span>
             </a-descriptions-item>
             <a-descriptions-item label="证件姓名">
               {{ detail.certificate_holder_name || '—' }}
@@ -118,7 +118,7 @@
               v-model="materialConfirmed"
               @change="materialError = ''"
             >
-              已核对证件姓名、身份证号、医院和执业证书信息一致
+              已核对证件姓名、身份证号与证件照片信息一致
             </a-checkbox>
             <p v-if="materialError" class="review-error">{{ materialError }}</p>
           </div>

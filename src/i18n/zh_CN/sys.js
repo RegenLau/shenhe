@@ -47,7 +47,7 @@ export default {
   goHome: '回到首页',
   notFoundPage: '啊哦，访问的页面被火星人劫走了...',
   login: {
-    slogan: '开箱即用的高质量中后台管理系统',
+    slogan: '安全用药，息息相关',
     title: '登录',
     username: '账户',
     usernameNotice: '请输入账户',

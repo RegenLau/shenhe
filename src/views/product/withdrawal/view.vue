@@ -29,8 +29,8 @@
             <a-descriptions-item label="申请单号">
               <span class="number-text">{{ detail.withdrawal_no || '—' }}</span>
             </a-descriptions-item>
-            <a-descriptions-item label="提现金额">
-              <strong class="money-text">{{ formatCurrency(detail.amount_cent) }}</strong>
+            <a-descriptions-item label="提现积分">
+              <strong class="money-text">{{ formatPoints(detail.amount_cent) }}</strong>
             </a-descriptions-item>
             <a-descriptions-item label="导出状态">
               <sa-dict
@@ -122,7 +122,7 @@
               {{ formatNumber(record.review_count) }} 条
             </template>
             <template #reward_amount_cent="{ record }">
-              {{ formatCurrency(record.reward_amount_cent) }}
+              {{ formatPoints(record.reward_amount_cent) }}
             </template>
           </a-table>
         </section>
@@ -160,7 +160,7 @@ const taskColumns = [
     align: 'right'
   },
   {
-    title: '本次计酬',
+    title: '本次积分',
     dataIndex: 'reward_amount_cent',
     slotName: 'reward_amount_cent',
     width: 120,
@@ -180,13 +180,7 @@ const sourceReviewCount = computed(() => {
 })
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
-const formatCurrency = (value) => {
-  const amount = Number(value || 0) / 100
-  return `¥${amount.toLocaleString('zh-CN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })}`
-}
+const formatPoints = (value) => `${formatNumber(Number(value || 0) / 100)} 积分`
 
 const loadDetail = async () => {
   loading.value = true
@@ -229,7 +223,7 @@ const markPaid = async () => {
 const confirmMarkPaid = () => {
   Modal.confirm({
     title: '确认登记打款结果',
-    content: `确认基金会已向“${detail.value.payee_name}”完成 ${formatCurrency(
+    content: `确认基金会已向“${detail.value.payee_name}”完成 ${formatPoints(
       detail.value.amount_cent
     )} 打款？登记后状态将变为“已打款”，不可撤销。`,
     width: 'min(420px, calc(100vw - 32px))',

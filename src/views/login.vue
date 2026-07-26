@@ -3,7 +3,6 @@ import { reactive, ref } from 'vue'
 import loginApi from '@/api/login'
 import { useUserStore } from '@/store'
 import { useRouter, useRoute } from 'vue-router'
-import packageJson from '../../package.json'
 import { useAppStore } from '@/store'
 
 const appStore = useAppStore()
@@ -61,14 +60,7 @@ const handleSubmit = async ({ values, errors }) => {
     </h3>
 
     <div class="login-width md:w-10/12 w-11/12 mx-auto flex justify-between h-full items-center">
-      <div class="w-6/12 mx-auto left-panel rounded-l pl-5 pr-5 hidden md:block">
-        <div class="logo">
-          <span>{{ $title }} v{{ packageJson.version }}</span>
-        </div>
-        <div class="slogan flex justify-end">
-          <span>---- {{ $t('sys.login.slogan') }}</span>
-        </div>
-      </div>
+      <div class="w-6/12 mx-auto left-panel rounded-l pl-5 pr-5 hidden md:block"></div>
 
       <div class="md:w-6/12 w-11/12 md:rounded-r mx-auto pl-5 pr-5 pb-10">
         <h2 class="mt-10 text-3xl pb-0 mb-10 login-title">{{ $t('sys.login.title') }}</h2>

@@ -26,25 +26,25 @@
           <small>等待整理并交付基金会</small>
         </article>
         <article class="metric-card">
-          <span>待导出金额</span>
+          <span>待导出积分</span>
           <strong>
-            {{ summaryLoaded ? formatCurrency(summary.pending_amount_cent) : '—' }}
+            {{ summaryLoaded ? formatPoints(summary.pending_amount_cent) : '—' }}
           </strong>
           <small>当前待处理申请合计</small>
         </article>
         <article class="metric-card">
           <span>已导出待打款</span>
           <strong>
-            {{ summaryLoaded ? formatCurrency(summary.exported_amount_cent) : '—' }}
+            {{ summaryLoaded ? formatPoints(summary.exported_amount_cent) : '—' }}
           </strong>
           <small>
             {{ summaryLoaded ? `共 ${formatNumber(summary.exported_count)} 笔，等待基金会打款` : '—' }}
           </small>
         </article>
         <article class="metric-card">
-          <span>已打款金额</span>
+          <span>已打款积分</span>
           <strong>
-            {{ summaryLoaded ? formatCurrency(summary.paid_amount_cent) : '—' }}
+            {{ summaryLoaded ? formatPoints(summary.paid_amount_cent) : '—' }}
           </strong>
           <small>
             {{ summaryLoaded ? `共 ${formatNumber(summary.paid_count)} 笔，基金会已完成支付` : '—' }}
@@ -114,7 +114,7 @@
       </template>
 
       <template #amount_cent="{ record }">
-        <span class="money-text">{{ formatCurrency(record.amount_cent) }}</span>
+        <span class="money-text">{{ formatPoints(record.amount_cent) }}</span>
       </template>
 
       <template #bank_info="{ record }">
@@ -161,13 +161,7 @@ const summary = reactive({
 })
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
-const formatCurrency = (value) => {
-  const amount = Number(value || 0) / 100
-  return `¥${amount.toLocaleString('zh-CN', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  })}`
-}
+const formatPoints = (value) => `${formatNumber(Number(value || 0) / 100)} 积分`
 
 const loadSummary = async () => {
   summaryLoading.value = true
@@ -256,7 +250,7 @@ const options = reactive({
 const columns = reactive([
   { title: '申请单号', dataIndex: 'withdrawal_no', width: 170, fixed: 'left' },
   { title: '申请医生', dataIndex: 'payee_name', width: 170 },
-  { title: '提现金额', dataIndex: 'amount_cent', width: 120, align: 'right' },
+  { title: '提现积分', dataIndex: 'amount_cent', width: 120, align: 'right' },
   { title: '收款账户', dataIndex: 'bank_info', width: 200 },
   {
     title: '导出状态',

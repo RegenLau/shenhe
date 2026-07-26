@@ -31,7 +31,7 @@
             医生账号已禁用，当前无法登录小程序；该历史任务和计酬记录仍会保留。
           </template>
           <template v-else>
-            医生账号已按手机号自动创建。医生首次使用 {{ maskPhone(detail.doctor_phone) }}
+            医生账号待激活。医生首次使用 {{ maskPhone(detail.doctor_phone) }}
             登录小程序后，即可查看该任务。
           </template>
         </a-alert>
@@ -86,15 +86,14 @@
         </section>
 
         <section class="detail-section">
-          <h3>计酬与时间</h3>
+          <h3>积分与时间</h3>
           <a-descriptions :column="1" bordered>
-            <a-descriptions-item label="单条计酬">
-              {{ formatCurrency(detail.unit_reward_cent) }}（医生端显示
-              {{ formatNumber(Number(detail.unit_reward_cent || 0) / 100) }} 积分）
+            <a-descriptions-item label="单条积分">
+              {{ formatPoints(detail.unit_reward_cent) }}
             </a-descriptions-item>
-            <a-descriptions-item label="任务总计酬">
+            <a-descriptions-item label="任务总积分">
               <strong class="money-text">
-                {{ formatCurrency(detail.total_reward_cent) }}
+                {{ formatPoints(detail.total_reward_cent) }}
               </strong>
             </a-descriptions-item>
             <a-descriptions-item label="创建时间">
@@ -124,7 +123,7 @@ const taskId = ref()
 const detail = ref({})
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
-const formatCurrency = (value) => `¥${formatNumber(Number(value || 0) / 100)}`
+const formatPoints = (value) => `${formatNumber(Number(value || 0) / 100)} 积分`
 const maskPhone = (value) =>
   String(value || '').replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2') || '—'
 

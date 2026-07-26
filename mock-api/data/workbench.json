@@ -23,7 +23,8 @@
     "withdrawable_amount_cent": 250000,
     "pending_withdrawal_amount_cent": 500000,
     "pending_export_amount_cent": 500000,
-    "exported_amount_cent": 750000
+    "exported_amount_cent": 750000,
+    "paid_amount_cent": 0
   },
   "todos": [
     {

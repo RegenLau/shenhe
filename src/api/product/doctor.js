@@ -9,6 +9,14 @@ export default {
     })
   },
 
+  save(data = {}) {
+    return request({
+      url: '/core/product/doctor/save',
+      method: 'post',
+      data
+    })
+  },
+
   read(id) {
     return request({
       url: '/core/product/doctor/read',

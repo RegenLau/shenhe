@@ -99,7 +99,7 @@
       </template>
 
       <template #total_reward_cent="{ record }">
-        <span class="money-text">{{ formatCurrency(record.total_reward_cent) }}</span>
+        <span class="money-text">{{ formatPoints(record.total_reward_cent) }}</span>
       </template>
     </sa-table>
 
@@ -129,7 +129,7 @@ const searchForm = ref({
 })
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
-const formatCurrency = (value) => `¥${formatNumber(Number(value || 0) / 100)}`
+const formatPoints = (value) => `${formatNumber(Number(value || 0) / 100)} 积分`
 const maskPhone = (value) => String(value || '').replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2')
 
 const getProgress = (record) => {
@@ -186,7 +186,7 @@ const columns = reactive([
   },
   { title: '完成进度', dataIndex: 'progress', width: 160 },
   { title: '任务数量', dataIndex: 'item_count', width: 90, align: 'right' },
-  { title: '任务计酬', dataIndex: 'total_reward_cent', width: 110, align: 'right' },
+  { title: '任务积分', dataIndex: 'total_reward_cent', width: 110, align: 'right' },
   {
     title: '创建方式',
     dataIndex: 'source_type',

@@ -8,7 +8,7 @@
     </header>
 
     <a-alert type="info" show-icon class="account-tip">
-      名单导入或手动分配任务时，系统会按手机号自动创建医生账号。待激活医生使用绑定手机号登录小程序后，即可看到已分配任务；任务全部完成后，对应金额计入累计计酬。
+      医生账号可在本页手动新增，或由名单导入按手机号自动创建。待激活医生使用绑定手机号登录小程序后，即可看到已分配任务；任务全部完成后，对应积分计入累计积分。
     </a-alert>
 
     <a-alert v-if="tableError" type="error" show-icon class="table-error">
@@ -60,6 +60,10 @@
       </template>
 
       <template #tableAfterButtons>
+        <a-button type="primary" @click="editRef?.open()">
+          <template #icon><icon-plus /></template>
+          新增医生
+        </a-button>
         <a-button :loading="exporting" @click="confirmExportPending">
           <template #icon><icon-download /></template>
           导出未激活名单
@@ -89,32 +93,13 @@
       </template>
 
       <template #accrued_reward_cent="{ record }">
-        <span class="money-text">{{ formatCurrency(record.accrued_reward_cent) }}</span>
+        <span class="money-text">{{ formatPoints(record.accrued_reward_cent) }}</span>
       </template>
 
-      <template #operationAfterExtend="{ record }">
-        <a-popconfirm
-          :content="accountStatusConfirmText(record)"
-          position="bottom"
-          @ok="changeAccountStatus(record)"
-        >
-          <a-link
-            :status="isDoctorDisabled(record) ? 'success' : 'danger'"
-            :disabled="updatingIds.has(record.id)"
-          >
-            {{
-              updatingIds.has(record.id)
-                ? '处理中'
-                : isDoctorDisabled(record)
-                  ? '开启'
-                  : '禁用'
-            }}
-          </a-link>
-        </a-popconfirm>
-      </template>
     </sa-table>
 
-    <doctor-detail ref="detailRef" />
+    <doctor-detail ref="detailRef" @updated="refresh" />
+    <doctor-edit ref="editRef" @success="refresh" />
   </div>
 </template>
 
@@ -124,12 +109,13 @@ import { Message, Modal } from '@arco-design/web-vue'
 import tool from '@/utils/tool'
 import doctorApi from '@/api/product/doctor'
 import DoctorDetail from './view.vue'
+import DoctorEdit from './edit.vue'
 
 const crudRef = ref()
 const detailRef = ref()
+const editRef = ref()
 const tableError = ref('')
 const exporting = ref(false)
-const updatingIds = reactive(new Set())
 
 const searchForm = ref({
   keyword: '',
@@ -138,7 +124,7 @@ const searchForm = ref({
 })
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
-const formatCurrency = (value) => `¥${formatNumber(Number(value || 0) / 100)}`
+const formatPoints = (value) => `${formatNumber(Number(value || 0) / 100)} 积分`
 const maskPhone = (value) =>
   String(value || '').replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2') || '—'
 
@@ -205,7 +191,7 @@ const options = reactive({
   api: loadList,
   pageLayout: 'normal',
   showSort: false,
-  operationColumnWidth: 150,
+  operationColumnWidth: 80,
   view: {
     show: true,
     text: '详情',
@@ -235,7 +221,7 @@ const columns = reactive([
     align: 'center'
   },
   {
-    title: '累计计酬',
+    title: '累计积分',
     dataIndex: 'accrued_reward_cent',
     width: 110,
     align: 'right'
@@ -243,39 +229,6 @@ const columns = reactive([
 ])
 
 const refresh = () => crudRef.value?.refresh()
-const isDoctorDisabled = (record) => record.account_status === 'disabled'
-
-const accountStatusConfirmText = (record) => {
-  if (isDoctorDisabled(record)) {
-    return record.activation_time
-      ? '开启后医生可重新登录小程序并接收新任务，确认开启吗？'
-      : '开启后账号恢复为待激活状态，并可重新接收任务，确认开启吗？'
-  }
-
-  return '禁用后医生将无法登录小程序或接收新任务，历史任务和计酬仍会保留。确认禁用吗？'
-}
-
-const changeAccountStatus = async (record) => {
-  const action = isDoctorDisabled(record) ? 'enable' : 'disable'
-  updatingIds.add(record.id)
-
-  try {
-    const response = await doctorApi.changeAccountStatus({
-      id: record.id,
-      action
-    })
-    if (response.code !== 200) return
-
-    record.account_status = response.data.account_status
-    Message.success(response.message)
-    await refresh()
-  } catch {
-    Message.error('医生账号状态更新失败，请稍后重试')
-  } finally {
-    updatingIds.delete(record.id)
-  }
-}
-
 const resetSearchForm = () => {
   Object.assign(searchForm.value, {
     keyword: '',

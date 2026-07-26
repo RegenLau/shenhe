@@ -16,7 +16,7 @@
 
     <section v-if="currentStep === 1" class="step-content">
       <a-alert type="info" show-icon>
-        模板仅需填写医生姓名、手机号和任务数量。单条审核计酬固定为 ¥50。
+        模板仅需填写医生姓名、手机号和任务数量。单条审核任务固定 50 积分。
       </a-alert>
 
       <a-upload
@@ -86,8 +86,8 @@
       </a-alert>
       <a-alert v-else type="success" show-icon class="preview-alert">
         全部 {{ preview.summary.valid_rows }} 行校验通过，将创建
-        {{ preview.summary.task_count }} 个任务单，预计总计酬
-        {{ formatCurrency(preview.summary.total_reward_cent) }}。
+        {{ preview.summary.task_count }} 个任务单，预计总积分
+        {{ formatPoints(preview.summary.total_reward_cent) }}。
       </a-alert>
 
       <a-table
@@ -106,9 +106,9 @@
               {{ formatNumber(record.item_count) }} 条
             </template>
           </a-table-column>
-          <a-table-column title="预计计酬" data-index="total_reward_cent" :width="110">
+          <a-table-column title="预计积分" data-index="total_reward_cent" :width="110">
             <template #cell="{ record }">
-              {{ formatCurrency(record.total_reward_cent) }}
+              {{ formatPoints(record.total_reward_cent) }}
             </template>
           </a-table-column>
           <a-table-column title="账号处理" data-index="account_action" :width="110">
@@ -223,7 +223,7 @@ const result = reactive({
 })
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
-const formatCurrency = (value) => `¥${formatNumber(Number(value || 0) / 100)}`
+const formatPoints = (value) => `${formatNumber(Number(value || 0) / 100)} 积分`
 
 const reset = () => {
   currentStep.value = 1

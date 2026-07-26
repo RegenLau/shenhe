@@ -28,7 +28,7 @@
             账号已禁用，医生当前无法登录小程序；历史任务和计酬记录仍会保留。
           </template>
           <template v-else>
-            账号已按手机号自动创建。医生首次使用 {{ maskPhone(detail.phone) }}
+            账号待激活。医生首次使用 {{ maskPhone(detail.phone) }}
             登录小程序后，即可查看已分配任务。
           </template>
         </a-alert>
@@ -56,8 +56,8 @@
             </a-col>
             <a-col :xs="12" :sm="6">
               <div class="metric-card">
-                <span>累计计酬</span>
-                <strong>{{ formatCurrency(detail.accrued_reward_cent) }}</strong>
+                <span>累计积分</span>
+                <strong>{{ formatPoints(detail.accrued_reward_cent) }}</strong>
               </div>
             </a-col>
           </a-row>
@@ -68,6 +68,15 @@
           <a-descriptions :column="1" bordered>
             <a-descriptions-item label="医生姓名">
               {{ detail.name || '—' }}
+            </a-descriptions-item>
+            <a-descriptions-item label="性别">
+              <sa-dict
+                v-if="detail.gender"
+                :value="detail.gender"
+                dict="doctor_gender"
+                render="span"
+              />
+              <span v-else>—</span>
             </a-descriptions-item>
             <a-descriptions-item label="绑定手机号">
               {{ maskPhone(detail.phone) }}
@@ -96,6 +105,25 @@
               {{ detail.last_login_time || '—' }}
             </a-descriptions-item>
           </a-descriptions>
+
+          <div class="account-action-bar">
+            <a-button
+              v-if="accountDisabled"
+              type="primary"
+              :loading="statusUpdating"
+              @click="confirmChangeAccountStatus"
+            >
+              开启账号
+            </a-button>
+            <a-button
+              v-else
+              status="danger"
+              :loading="statusUpdating"
+              @click="confirmChangeAccountStatus"
+            >
+              禁用账号
+            </a-button>
+          </div>
         </section>
 
         <section class="detail-section">
@@ -144,7 +172,7 @@
               {{ formatNumber(record.item_count) }} 条
             </template>
             <template #reward="{ record }">
-              {{ formatCurrency(record.total_reward_cent) }}
+              {{ formatPoints(record.total_reward_cent) }}
             </template>
           </a-table>
         </section>
@@ -155,19 +183,23 @@
 
 <script setup>
 import { computed, ref } from 'vue'
+import { Message, Modal } from '@arco-design/web-vue'
 import doctorApi from '@/api/product/doctor'
+
+const emit = defineEmits(['updated'])
 
 const visible = ref(false)
 const loading = ref(false)
 const errorMessage = ref('')
 const doctorId = ref()
 const detail = ref({})
+const statusUpdating = ref(false)
 
 const taskColumns = [
   { title: '任务编号', dataIndex: 'task_no', width: 160 },
   { title: '状态', dataIndex: 'status', slotName: 'status', width: 90 },
   { title: '完成进度', dataIndex: 'progress', slotName: 'progress', width: 120 },
-  { title: '任务总额度', dataIndex: 'reward', slotName: 'reward', width: 110 }
+  { title: '任务总积分', dataIndex: 'reward', slotName: 'reward', width: 110 }
 ]
 
 const accountActive = computed(() => detail.value.account_status === 'active')
@@ -178,11 +210,64 @@ const accountAlertType = computed(() => {
   return 'warning'
 })
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
-const formatCurrency = (value) => `¥${formatNumber(Number(value || 0) / 100)}`
+const formatPoints = (value) => `${formatNumber(Number(value || 0) / 100)} 积分`
 const maskPhone = (value) =>
   String(value || '').replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2') || '—'
 const practiceValue = (value) => {
   return value && value !== '待补充' ? value : '待补充'
+}
+
+const accountStatusConfirm = computed(() => {
+  if (accountDisabled.value) {
+    return {
+      title: '确认开启账号',
+      content: detail.value.activation_time
+        ? '开启后医生可重新登录小程序并接收新任务，确认开启吗？'
+        : '开启后账号恢复为待激活状态，并可重新接收任务，确认开启吗？',
+      okText: '确认开启'
+    }
+  }
+
+  return {
+    title: '确认禁用账号',
+    content:
+      '禁用后医生将无法登录小程序或接收新任务，历史任务和积分记录仍会保留。确认禁用吗？',
+    okText: '确认禁用'
+  }
+})
+
+const changeAccountStatus = async () => {
+  const action = accountDisabled.value ? 'enable' : 'disable'
+  statusUpdating.value = true
+
+  try {
+    const response = await doctorApi.changeAccountStatus({
+      id: detail.value.id,
+      action
+    })
+    if (response.code === 200) {
+      Message.success(response.message)
+      emit('updated')
+      await loadDetail()
+      return
+    }
+  } catch {
+    Message.error('医生账号状态更新失败，请稍后重试')
+  } finally {
+    statusUpdating.value = false
+  }
+}
+
+const confirmChangeAccountStatus = () => {
+  const { title, content, okText } = accountStatusConfirm.value
+  Modal.confirm({
+    title,
+    content,
+    width: 'min(420px, calc(100vw - 32px))',
+    okText,
+    okButtonProps: accountDisabled.value ? undefined : { status: 'danger' },
+    onOk: changeAccountStatus
+  })
 }
 
 const loadDetail = async () => {
@@ -225,6 +310,12 @@ defineExpose({ open })
 
 .account-alert {
   margin-bottom: 20px;
+}
+
+.account-action-bar {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
 }
 
 .detail-section {

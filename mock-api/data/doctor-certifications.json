@@ -12,7 +12,7 @@
   {
     "id": 2,
     "doctor_id": 3,
-    "certificate_type": "医师资格证",
+    "certificate_type": "医师执业证书",
     "status": "pending",
     "submit_time": "2026-07-23 08:30:00",
     "review_time": null,
@@ -22,7 +22,7 @@
   {
     "id": 3,
     "doctor_id": 4,
-    "certificate_type": "医师执业证书",
+    "certificate_type": "医师资格证",
     "status": "approved",
     "submit_time": "2026-07-20 15:20:00",
     "review_time": "2026-07-20 18:10:00",
@@ -32,7 +32,7 @@
   {
     "id": 4,
     "doctor_id": 5,
-    "certificate_type": "工作证 / 职称证",
+    "certificate_type": "医师执业证书",
     "status": "pending",
     "submit_time": "2026-07-22 20:30:00",
     "review_time": null,
@@ -62,7 +62,7 @@
   {
     "id": 7,
     "doctor_id": 8,
-    "certificate_type": "工作证 / 职称证",
+    "certificate_type": "医师资格证",
     "status": "approved",
     "submit_time": "2026-07-12 14:20:00",
     "review_time": "2026-07-12 18:35:00",
