@@ -208,12 +208,12 @@
     ],
     "review_result": [
       {
-        "label": "已通过",
+        "label": "赞同",
         "value": "approved",
         "color": "green"
       },
       {
-        "label": "未通过",
+        "label": "修改",
         "value": "rejected",
         "color": "red"
       }
