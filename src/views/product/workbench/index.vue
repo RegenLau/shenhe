@@ -249,16 +249,16 @@
                 <strong>{{ formatPoints(overview.settlement.pending_withdrawal_amount_cent) }}</strong>
               </li>
               <li>
-                <span>已导出待打款</span>
+                <span>已导出待结算</span>
                 <strong>{{ formatPoints(overview.settlement.exported_amount_cent) }}</strong>
               </li>
               <li>
-                <span>已打款</span>
-                <strong>{{ formatPoints(overview.settlement.paid_amount_cent) }}</strong>
+                <span>已结算</span>
+                <strong>{{ formatPoints(overview.settlement.settled_amount_cent) }}</strong>
               </li>
             </ul>
             <p class="settlement-note">
-              1 积分 = 1 元；提现名单导出后由基金会人工审核打款，打款结果在提现详情登记。
+              1 积分 = 1 元；提现名单导出后由基金会人工结算，结算结果通过名单导入回写。
             </p>
           </a-card>
         </a-col>
@@ -307,7 +307,7 @@ const overview = reactive({
     pending_withdrawal_amount_cent: 0,
     pending_export_amount_cent: 0,
     exported_amount_cent: 0,
-    paid_amount_cent: 0
+    settled_amount_cent: 0
   },
   todos: []
 })

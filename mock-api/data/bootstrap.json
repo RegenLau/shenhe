@@ -245,7 +245,7 @@
         "color": "gray"
       }
     ],
-    "withdrawal_export_status": [
+    "withdrawal_settlement_status": [
       {
         "label": "待导出",
         "value": "pending",
@@ -257,8 +257,8 @@
         "color": "blue"
       },
       {
-        "label": "已打款",
-        "value": "paid",
+        "label": "已结算",
+        "value": "settled",
         "color": "green"
       }
     ],

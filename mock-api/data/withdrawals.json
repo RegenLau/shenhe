@@ -12,9 +12,10 @@
     "source_task_id": 6,
     "source_task_no": "RW202607230006",
     "source_review_count": 60,
-    "export_status": "exported",
+    "settlement_status": "settled",
     "apply_time": "2026-07-16 09:12:00",
-    "export_time": "2026-07-16 17:30:00"
+    "export_time": "2026-07-16 17:30:00",
+    "settled_time": "2026-07-17 09:00:00"
   },
   {
     "id": 2,
@@ -29,7 +30,7 @@
     "source_task_id": 6,
     "source_task_no": "RW202607230006",
     "source_review_count": 50,
-    "export_status": "exported",
+    "settlement_status": "exported",
     "apply_time": "2026-07-16 14:28:00",
     "export_time": "2026-07-17 10:05:00"
   },
@@ -46,7 +47,7 @@
     "source_task_id": 7,
     "source_task_no": "RW202607230007",
     "source_review_count": 40,
-    "export_status": "exported",
+    "settlement_status": "exported",
     "apply_time": "2026-07-17 09:45:00",
     "export_time": "2026-07-18 09:20:00"
   },
@@ -63,7 +64,7 @@
     "source_task_id": 6,
     "source_task_no": "RW202607230006",
     "source_review_count": 10,
-    "export_status": "pending",
+    "settlement_status": "pending",
     "apply_time": "2026-07-18 11:06:00",
     "export_time": null
   },
@@ -80,7 +81,7 @@
     "source_task_id": 7,
     "source_task_no": "RW202607230007",
     "source_review_count": 20,
-    "export_status": "pending",
+    "settlement_status": "pending",
     "apply_time": "2026-07-18 15:22:00",
     "export_time": null
   },
@@ -97,7 +98,7 @@
     "source_task_id": 7,
     "source_task_no": "RW202607230007",
     "source_review_count": 15,
-    "export_status": "pending",
+    "settlement_status": "pending",
     "apply_time": "2026-07-19 10:18:00",
     "export_time": null
   },
@@ -114,7 +115,7 @@
     "source_task_id": 7,
     "source_task_no": "RW202607230007",
     "source_review_count": 15,
-    "export_status": "pending",
+    "settlement_status": "pending",
     "apply_time": "2026-07-19 16:35:00",
     "export_time": null
   },
@@ -131,7 +132,7 @@
     "source_task_id": 7,
     "source_task_no": "RW202607230007",
     "source_review_count": 10,
-    "export_status": "pending",
+    "settlement_status": "pending",
     "apply_time": "2026-07-20 09:08:00",
     "export_time": null
   },
@@ -148,7 +149,7 @@
     "source_task_id": 8,
     "source_task_no": "RW202607230008",
     "source_review_count": 10,
-    "export_status": "pending",
+    "settlement_status": "pending",
     "apply_time": "2026-07-20 13:26:00",
     "export_time": null
   },
@@ -165,7 +166,7 @@
     "source_task_id": 8,
     "source_task_no": "RW202607230008",
     "source_review_count": 10,
-    "export_status": "pending",
+    "settlement_status": "pending",
     "apply_time": "2026-07-21 10:40:00",
     "export_time": null
   },
@@ -182,7 +183,7 @@
     "source_task_id": 8,
     "source_task_no": "RW202607230008",
     "source_review_count": 10,
-    "export_status": "pending",
+    "settlement_status": "pending",
     "apply_time": "2026-07-22 14:16:00",
     "export_time": null
   }

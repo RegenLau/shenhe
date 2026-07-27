@@ -16,7 +16,7 @@ const reviewIssueTypes = [
   'safety_risk',
   'other'
 ]
-const withdrawalStatuses = ['pending', 'exported', 'paid']
+const withdrawalSettlementStatuses = ['pending', 'exported', 'settled']
 const doctorAccountStatuses = ['pending_activation', 'active', 'disabled']
 const doctorCertificationStatuses = [
   'unsubmitted',
@@ -80,6 +80,7 @@ workbenchFixture.reviews.rejected = reviews.filter(
 syncWithdrawalWorkbench()
 syncCertificationWorkbench()
 const importPreviews = new Map()
+const withdrawalSettlementPreviews = new Map()
 let nextTaskId = Math.max(...tasks.map((task) => task.id)) + 1
 let nextDoctorId = Math.max(...doctors.map((doctor) => doctor.id)) + 1
 let nextDoctorConfigId =
@@ -466,19 +467,19 @@ function summarizeWithdrawals(records = []) {
       summary.total_count += 1
       summary.total_amount_cent += amountCent
 
-      if (withdrawal.export_status === 'pending') {
+      if (withdrawal.settlement_status === 'pending') {
         summary.pending_count += 1
         summary.pending_amount_cent += amountCent
       }
 
-      if (withdrawal.export_status === 'exported') {
+      if (withdrawal.settlement_status === 'exported') {
         summary.exported_count += 1
         summary.exported_amount_cent += amountCent
       }
 
-      if (withdrawal.export_status === 'paid') {
-        summary.paid_count += 1
-        summary.paid_amount_cent += amountCent
+      if (withdrawal.settlement_status === 'settled') {
+        summary.settled_count += 1
+        summary.settled_amount_cent += amountCent
       }
 
       return summary
@@ -490,8 +491,8 @@ function summarizeWithdrawals(records = []) {
       pending_amount_cent: 0,
       exported_count: 0,
       exported_amount_cent: 0,
-      paid_count: 0,
-      paid_amount_cent: 0
+      settled_count: 0,
+      settled_amount_cent: 0
     }
   )
 }
@@ -516,8 +517,8 @@ function syncWithdrawalWorkbench() {
     withdrawalSummary.pending_amount_cent
   workbenchFixture.settlement.exported_amount_cent =
     withdrawalSummary.exported_amount_cent
-  workbenchFixture.settlement.paid_amount_cent =
-    withdrawalSummary.paid_amount_cent
+  workbenchFixture.settlement.settled_amount_cent =
+    withdrawalSummary.settled_amount_cent
 
   if (withdrawalSummary.pending_count === 0) {
     if (todoIndex >= 0) workbenchFixture.todos.splice(todoIndex, 1)
@@ -612,10 +613,10 @@ function toPublicWithdrawal(withdrawal, includeSourceTasks = false) {
   const result = {
     id: withdrawal.id,
     withdrawal_no: withdrawal.withdrawal_no,
-    status: withdrawal.export_status,
+    status: withdrawal.settlement_status,
     applied_at: withdrawal.apply_time,
     exported_at: withdrawal.export_time,
-    paid_at: withdrawal.pay_time || null,
+    settled_at: withdrawal.settled_time || null,
     doctor_id: withdrawal.doctor_id,
     doctor_name: withdrawal.doctor_name,
     payee_name: withdrawal.doctor_name,
@@ -1606,8 +1607,8 @@ app.get('/core/product/withdrawal/index', (req, res) => {
   const page = req.query.page === undefined ? 1 : Number(req.query.page)
   const limit = req.query.limit === undefined ? 10 : Number(req.query.limit)
 
-  if (status && !withdrawalStatuses.includes(status)) {
-    res.json(failure(422, '导出状态筛选值无效'))
+  if (status && !withdrawalSettlementStatuses.includes(status)) {
+    res.json(failure(422, '结算状态筛选值无效'))
     return
   }
 
@@ -1623,7 +1624,7 @@ app.get('/core/product/withdrawal/index', (req, res) => {
 
   const filteredWithdrawals = withdrawals
     .filter((withdrawal) => {
-      if (status && withdrawal.export_status !== status) return false
+      if (status && withdrawal.settlement_status !== status) return false
       if (!keyword) return true
 
       return [
@@ -1661,9 +1662,210 @@ app.get('/core/product/withdrawal/read', (req, res) => {
   res.json(success(toPublicWithdrawal(withdrawal, true)))
 })
 
+app.post('/core/product/withdrawal/settlementImportPreview', (req, res) => {
+  const fileName = String(req.body?.file_name || '').trim()
+  const fileSize = Number(req.body?.file_size)
+  const fileContent = String(req.body?.file_content || '')
+
+  if (!fileName) {
+    res.json(failure(422, '请选择要导入的已结算名单'))
+    return
+  }
+
+  if (!/\.csv$/i.test(fileName)) {
+    res.json(failure(422, '已结算名单仅支持 CSV 文件，请使用系统导出的待处理名单'))
+    return
+  }
+
+  if (!Number.isFinite(fileSize) || fileSize <= 0 || !fileContent.trim()) {
+    res.json(failure(422, '无法读取名单文件，请重新选择'))
+    return
+  }
+
+  if (
+    fileSize > 10 * 1024 * 1024 ||
+    Buffer.byteLength(fileContent, 'utf8') > 10 * 1024 * 1024
+  ) {
+    res.json(failure(422, '已结算名单不能超过 10 MB'))
+    return
+  }
+
+  let csvRows
+  try {
+    csvRows = parseCsv(fileContent)
+  } catch {
+    res.json(failure(422, 'CSV 文件格式不正确，请检查引号和换行后重试'))
+    return
+  }
+
+  if (csvRows.length < 2) {
+    res.json(failure(422, '名单中没有可更新的提现记录'))
+    return
+  }
+
+  const header = csvRows[0]
+  const withdrawalNoIndex = header.findIndex((value) =>
+    ['申请单号', '提现申请单号'].includes(value)
+  )
+  const settlementStatusIndex = header.indexOf('结算状态')
+
+  if (withdrawalNoIndex < 0 || settlementStatusIndex < 0) {
+    res.json(failure(422, '模板字段不完整，必须包含申请单号和结算状态'))
+    return
+  }
+
+  const withdrawalNoCounts = new Map()
+  csvRows.slice(1).forEach((values) => {
+    const withdrawalNo = String(values[withdrawalNoIndex] || '').trim()
+    if (!withdrawalNo) return
+    withdrawalNoCounts.set(
+      withdrawalNo,
+      (withdrawalNoCounts.get(withdrawalNo) || 0) + 1
+    )
+  })
+
+  const rows = csvRows.slice(1).map((values, index) => {
+    const rowNo = index + 2
+    const withdrawalNo = String(values[withdrawalNoIndex] || '').trim()
+    const targetStatus = String(values[settlementStatusIndex] || '').trim()
+    const withdrawal = withdrawals.find(
+      (item) => item.withdrawal_no === withdrawalNo
+    )
+    const currentStatus = withdrawal?.settlement_status || ''
+    let validationStatus = 'eligible'
+    let validationMessage = '校验通过，将更新为已结算'
+
+    if (!withdrawalNo) {
+      validationStatus = 'invalid'
+      validationMessage = '申请单号不能为空，已跳过'
+    } else if ((withdrawalNoCounts.get(withdrawalNo) || 0) > 1) {
+      validationStatus = 'invalid'
+      validationMessage = '申请单号在名单中重复，已跳过'
+    } else if (targetStatus !== '已结算') {
+      validationStatus = 'invalid'
+      validationMessage = '结算状态必须改为“已结算”，已跳过'
+    } else if (!withdrawal) {
+      validationStatus = 'invalid'
+      validationMessage = '系统中不存在该提现申请，已跳过'
+    } else if (currentStatus === 'pending') {
+      validationStatus = 'skipped'
+      validationMessage = '当前仍为待导出，仅已导出记录可结算，已跳过'
+    } else if (currentStatus === 'settled') {
+      validationStatus = 'skipped'
+      validationMessage = '当前已经结算，无需重复导入，已跳过'
+    } else if (currentStatus !== 'exported') {
+      validationStatus = 'invalid'
+      validationMessage = '当前结算状态异常，已跳过'
+    }
+
+    return {
+      row_no: rowNo,
+      withdrawal_no: withdrawalNo,
+      payee_name: withdrawal?.doctor_name || '',
+      target_status: targetStatus,
+      current_status: currentStatus,
+      validation_status: validationStatus,
+      validation_message: validationMessage
+    }
+  })
+
+  const eligibleRows = rows.filter(
+    (row) => row.validation_status === 'eligible'
+  )
+  const summary = {
+    total_rows: rows.length,
+    eligible_rows: eligibleRows.length,
+    skipped_rows: rows.length - eligibleRows.length,
+    pending_rows: rows.filter((row) => row.current_status === 'pending').length,
+    settled_rows: rows.filter((row) => row.current_status === 'settled').length,
+    invalid_rows: rows.filter((row) => row.validation_status === 'invalid').length
+  }
+  const previewId = `WS${Date.now()}${String(
+    Math.floor(Math.random() * 1000)
+  ).padStart(3, '0')}`
+
+  withdrawalSettlementPreviews.set(previewId, {
+    file_name: fileName,
+    rows,
+    summary
+  })
+
+  res.json(
+    success({
+      preview_id: previewId,
+      file_name: fileName,
+      rows,
+      summary
+    })
+  )
+})
+
+app.post('/core/product/withdrawal/settlementImportConfirm', (req, res) => {
+  const previewId = String(req.body?.preview_id || '').trim()
+
+  if (!previewId) {
+    res.json(failure(422, '缺少导入预览标识，请重新上传名单'))
+    return
+  }
+
+  const preview = withdrawalSettlementPreviews.get(previewId)
+
+  if (!preview) {
+    res.json(failure(404, '导入预览不存在或已完成，请重新上传名单'))
+    return
+  }
+
+  const eligibleRows = preview.rows.filter(
+    (row) => row.validation_status === 'eligible'
+  )
+  if (eligibleRows.length === 0) {
+    res.json(failure(422, '名单中没有可更新的已导出记录'))
+    return
+  }
+
+  const settledTime = formatDateTime()
+  let updatedCount = 0
+  let changedStateSkippedCount = 0
+
+  eligibleRows.forEach((row) => {
+    const withdrawal = withdrawals.find(
+      (item) => item.withdrawal_no === row.withdrawal_no
+    )
+
+    if (!withdrawal || withdrawal.settlement_status !== 'exported') {
+      changedStateSkippedCount += 1
+      return
+    }
+
+    withdrawal.settlement_status = 'settled'
+    withdrawal.settled_time = settledTime
+    updatedCount += 1
+  })
+
+  const skippedCount = preview.summary.skipped_rows + changedStateSkippedCount
+  withdrawalSettlementPreviews.delete(previewId)
+  if (updatedCount === 0) {
+    res.json(failure(422, '可结算记录的状态已变化，请重新校验名单后再导入'))
+    return
+  }
+
+  syncWithdrawalWorkbench()
+
+  res.json(
+    success(
+      {
+        updated_count: updatedCount,
+        skipped_count: skippedCount,
+        settled_time: updatedCount > 0 ? settledTime : null
+      },
+      `已更新 ${updatedCount} 笔提现结算状态，跳过 ${skippedCount} 笔`
+    )
+  )
+})
+
 app.post('/core/product/withdrawal/export', (req, res) => {
   const pendingWithdrawals = withdrawals
-    .filter((withdrawal) => withdrawal.export_status === 'pending')
+    .filter((withdrawal) => withdrawal.settlement_status === 'pending')
     .sort(
       (left, right) =>
         left.apply_time.localeCompare(right.apply_time) || left.id - right.id
@@ -1685,6 +1887,7 @@ app.post('/core/product/withdrawal/export', (req, res) => {
       '开户行',
       '银行卡号',
       '金额(元)',
+      '结算状态',
       '来源任务编号',
       '审核条数'
     ],
@@ -1700,6 +1903,7 @@ app.post('/core/product/withdrawal/export', (req, res) => {
         withdrawal.bank_name,
         toExcelText(withdrawal.bank_card_no, /^\d{16,19}$/),
         (Number(withdrawal.amount_cent || 0) / 100).toFixed(2),
+        '已导出',
         sourceTasks.map((sourceTask) => sourceTask.task_no).join('、'),
         sourceTasks.reduce(
           (total, sourceTask) => total + sourceTask.review_count,
@@ -1711,64 +1915,20 @@ app.post('/core/product/withdrawal/export', (req, res) => {
   const csv = rows.map((row) => row.map(escapeCsvCell).join(',')).join('\r\n')
   const exportBatch = exportTime.replaceAll(/[-: ]/g, '')
 
-  pendingWithdrawals.forEach((withdrawal) => {
-    withdrawal.export_status = 'exported'
-    withdrawal.export_time = exportTime
-  })
-  syncWithdrawalWorkbench()
-
   res.setHeader('Cache-Control', 'no-store')
   res.setHeader('Content-Type', 'text/csv; charset=utf-8')
   res.setHeader(
     'Content-Disposition',
     `attachment; filename="foundation-withdrawals-${exportBatch}.csv"`
   )
-  res.send(`\uFEFF${csv}`)
-})
-
-app.post('/core/product/withdrawal/markPaid', (req, res) => {
-  const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(Number) : []
-
-  if (ids.length === 0 || ids.some((id) => !Number.isInteger(id) || id <= 0)) {
-    res.json(failure(422, '\u8BF7\u63D0\u4F9B\u6709\u6548\u7684\u63D0\u73B0\u7533\u8BF7 ID \u5217\u8868'))
-    return
-  }
-
-  const targets = withdrawals.filter((withdrawal) =>
-    ids.includes(withdrawal.id)
-  )
-
-  if (targets.length !== ids.length) {
-    res.json(failure(404, '\u90E8\u5206\u63D0\u73B0\u7533\u8BF7\u4E0D\u5B58\u5728\uFF0C\u8BF7\u5237\u65B0\u540E\u91CD\u8BD5'))
-    return
-  }
-
-  const notExported = targets.find(
-    (withdrawal) => withdrawal.export_status !== 'exported'
-  )
-  if (notExported) {
-    res.json(
-      failure(
-        422,
-        `\u7533\u8BF7 ${notExported.withdrawal_no} \u5C1A\u672A\u5BFC\u51FA\u6216\u5DF2\u6253\u6B3E\uFF0C\u4EC5\u201C\u5DF2\u5BFC\u51FA\u201D\u7684\u7533\u8BF7\u53EF\u4EE5\u767B\u8BB0\u6253\u6B3E`
-      )
-    )
-    return
-  }
-
-  const payTime = formatDateTime()
-  targets.forEach((withdrawal) => {
-    withdrawal.export_status = 'paid'
-    withdrawal.pay_time = payTime
+  res.once('finish', () => {
+    pendingWithdrawals.forEach((withdrawal) => {
+      withdrawal.settlement_status = 'exported'
+      withdrawal.export_time = exportTime
+    })
+    syncWithdrawalWorkbench()
   })
-  syncWithdrawalWorkbench()
-
-  res.json(
-    success(
-      { paid_count: targets.length, pay_time: payTime },
-      '\u5DF2\u767B\u8BB0\u57FA\u91D1\u4F1A\u6253\u6B3E\u7ED3\u679C'
-    )
-  )
+  res.send(`\uFEFF${csv}`)
 })
 
 app.get('/core/product/task/index', (req, res) => {

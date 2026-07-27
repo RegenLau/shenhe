@@ -33,11 +33,19 @@ export default {
     })
   },
 
-  markPaid(ids = []) {
+  previewSettlementImport(data = {}) {
     return request({
-      url: '/core/product/withdrawal/markPaid',
+      url: '/core/product/withdrawal/settlementImportPreview',
       method: 'post',
-      data: { ids }
+      data
+    })
+  },
+
+  confirmSettlementImport(previewId) {
+    return request({
+      url: '/core/product/withdrawal/settlementImportConfirm',
+      method: 'post',
+      data: { preview_id: previewId }
     })
   }
 }

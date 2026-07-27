@@ -8,7 +8,7 @@
     </header>
 
     <a-alert type="info" show-icon class="settlement-tip">
-      平台仅负责记录提现申请并导出待处理名单，不进行审批或打款。名单导出后由基金会线下审核支付；基金会完成打款后，可在申请详情中登记“已打款”。医生端金额以积分展示，1 积分 = 1 元。
+      平台仅负责记录提现申请并导出待处理名单，不进行审批或打款。基金会完成结算后，请将导出名单中的“结算状态”改为“已结算”并导回系统。医生端金额以积分展示，1 积分 = 1 元。
     </a-alert>
 
     <a-alert v-if="summaryError" type="error" show-icon class="summary-error">
@@ -33,21 +33,21 @@
           <small>当前待处理申请合计</small>
         </article>
         <article class="metric-card">
-          <span>已导出待打款</span>
+          <span>已导出待结算</span>
           <strong>
             {{ summaryLoaded ? formatPoints(summary.exported_amount_cent) : '—' }}
           </strong>
           <small>
-            {{ summaryLoaded ? `共 ${formatNumber(summary.exported_count)} 笔，等待基金会打款` : '—' }}
+            {{ summaryLoaded ? `共 ${formatNumber(summary.exported_count)} 笔，等待基金会结算` : '—' }}
           </small>
         </article>
         <article class="metric-card">
-          <span>已打款积分</span>
+          <span>已结算积分</span>
           <strong>
-            {{ summaryLoaded ? formatPoints(summary.paid_amount_cent) : '—' }}
+            {{ summaryLoaded ? formatPoints(summary.settled_amount_cent) : '—' }}
           </strong>
           <small>
-            {{ summaryLoaded ? `共 ${formatNumber(summary.paid_count)} 笔，基金会已完成支付` : '—' }}
+            {{ summaryLoaded ? `共 ${formatNumber(summary.settled_count)} 笔，已完成结算` : '—' }}
           </small>
         </article>
       </section>
@@ -80,10 +80,10 @@
           </a-form-item>
         </a-col>
         <a-col :xs="24" :sm="12">
-          <a-form-item field="status" label="导出状态">
+          <a-form-item field="status" label="结算状态">
             <sa-select
               v-model="searchForm.status"
-              dict="withdrawal_export_status"
+              dict="withdrawal_settlement_status"
               placeholder="全部状态"
               allow-clear
             />
@@ -92,6 +92,10 @@
       </template>
 
       <template #tableAfterButtons>
+        <a-button @click="settlementImportRef?.open()">
+          <template #icon><icon-upload /></template>
+          导入已结算名单
+        </a-button>
         <a-button
           :loading="exporting"
           :disabled="!summaryLoaded || summary.pending_count === 0"
@@ -127,7 +131,11 @@
       </template>
     </sa-table>
 
-    <withdrawal-detail ref="detailRef" @updated="handleDetailUpdated" />
+    <withdrawal-detail ref="detailRef" />
+    <settlement-import
+      ref="settlementImportRef"
+      @success="handleSettlementImported"
+    />
   </div>
 </template>
 
@@ -137,9 +145,11 @@ import { Message, Modal } from '@arco-design/web-vue'
 import tool from '@/utils/tool'
 import withdrawalApi from '@/api/product/withdrawal'
 import WithdrawalDetail from './view.vue'
+import SettlementImport from './settlement-import.vue'
 
 const crudRef = ref()
 const detailRef = ref()
+const settlementImportRef = ref()
 const tableError = ref('')
 const summaryError = ref('')
 const summaryLoading = ref(false)
@@ -156,8 +166,8 @@ const summary = reactive({
   pending_amount_cent: 0,
   exported_count: 0,
   exported_amount_cent: 0,
-  paid_count: 0,
-  paid_amount_cent: 0
+  settled_count: 0,
+  settled_amount_cent: 0
 })
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
@@ -214,7 +224,7 @@ const exportPending = async () => {
     }
 
     tool.download(response)
-    Message.success('待处理名单已导出，请交基金会线下审核支付；导出不代表已付款')
+    Message.success('待处理名单已导出；完成结算后请修改名单中的结算状态并导回系统')
     refresh()
     await loadSummary()
   } catch {
@@ -253,10 +263,10 @@ const columns = reactive([
   { title: '提现积分', dataIndex: 'amount_cent', width: 120, align: 'right' },
   { title: '收款账户', dataIndex: 'bank_info', width: 200 },
   {
-    title: '导出状态',
+    title: '结算状态',
     dataIndex: 'status',
     type: 'dict',
-    dict: 'withdrawal_export_status',
+    dict: 'withdrawal_settlement_status',
     width: 100,
     align: 'center'
   },
@@ -264,7 +274,7 @@ const columns = reactive([
 ])
 
 const refresh = () => crudRef.value?.refresh()
-const handleDetailUpdated = () => {
+const handleSettlementImported = () => {
   refresh()
   loadSummary()
 }
