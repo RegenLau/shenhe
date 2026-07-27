@@ -1,4 +1,4 @@
-# 希息健康后台 V1 开发交接
+# 希息药事后台 V1 开发交接
 
 > 更新时间：2026-07-27
 > 线上仓库：[RegenLau/shenhe](https://github.com/RegenLau/shenhe)
@@ -7,7 +7,7 @@
 
 ## 1. 项目定位
 
-这是基于 SaiAdmin Vue 5.x 搭建的“希息健康审核业务运营后台”V1 原型。
+这是基于 SaiAdmin Vue 5.x 搭建的“希息药事审核业务运营后台”V1 原型。
 
 当前目标是验证以下后台链路：
 
@@ -453,7 +453,7 @@ npm exec --yes --package yarn@1.22.22 -- yarn install --frozen-lockfile
 
 ### 出现 `Mock route not found`
 
-当前只保证 `src/views/product/` 下的希息健康业务模块。SaiAdmin 继承页面并非都已实现 Mock。
+当前只保证 `src/views/product/` 下的希息药事业务模块。SaiAdmin 继承页面并非都已实现 Mock。
 
 ### 端口被占用
 
@@ -509,7 +509,7 @@ git status
 
 ```text
 先阅读 CLAUDE.md、docs/HANDOFF.md 和 docs/README.md，并检查 git status。
-当前项目是希息健康后台 V1：Vue 3 + JavaScript + SaiAdmin + Arco Design Vue，
+当前项目是希息药事后台 V1：Vue 3 + JavaScript + SaiAdmin + Arco Design Vue，
 页面必须通过 src/api → Axios → /dev → Mock API 获取数据。
 后台五个业务模块已经完成，不要从旧 HTML 原型恢复延期功能。
 先复述当前分支、已有模块、开发边界和验证方式，再开始本次需求。
