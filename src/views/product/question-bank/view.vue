@@ -86,17 +86,11 @@
               <span v-else>—</span>
             </a-descriptions-item>
             <a-descriptions-item label="风险标签">
-              <a-space v-if="riskTags.length" wrap>
+              <div v-if="riskTags.length" class="risk-tag-list">
                 <a-tag v-for="tag in riskTags" :key="tag" color="orange">
                   {{ tag }}
                 </a-tag>
-              </a-space>
-              <span v-else>—</span>
-            </a-descriptions-item>
-            <a-descriptions-item label="升级原因">
-              <ul v-if="upgradeReasons.length" class="plain-list">
-                <li v-for="reason in upgradeReasons" :key="reason">{{ reason }}</li>
-              </ul>
+              </div>
               <span v-else>—</span>
             </a-descriptions-item>
           </a-descriptions>
@@ -104,31 +98,7 @@
 
         <section class="detail-section">
           <h3>AI 回答</h3>
-          <div class="answer-list">
-            <article class="answer-block">
-              <h4>用药建议</h4>
-              <p>{{ answer.suggestion || '—' }}</p>
-            </article>
-            <article class="answer-block">
-              <h4>用法用量</h4>
-              <p>{{ answer.dosage || '—' }}</p>
-            </article>
-            <article class="answer-block">
-              <h4>注意事项</h4>
-              <ul v-if="precautions.length">
-                <li v-for="item in precautions" :key="item">{{ item }}</li>
-              </ul>
-              <p v-else>—</p>
-            </article>
-            <article class="answer-block">
-              <h4>药物相互作用</h4>
-              <p>{{ answer.interaction || '—' }}</p>
-            </article>
-            <article class="answer-block">
-              <h4>就医提醒</h4>
-              <p>{{ answer.warning || '—' }}</p>
-            </article>
-          </div>
+          <div class="content-block answer-content">{{ answerText || '—' }}</div>
         </section>
 
         <section class="detail-section">
@@ -162,15 +132,10 @@
         </section>
 
         <section class="detail-section">
-          <h3>来源与隐私</h3>
+          <h3>来源信息</h3>
           <a-descriptions :column="1" bordered>
             <a-descriptions-item label="来源依据">
               <span class="long-text">{{ detail.source_reference || '—' }}</span>
-            </a-descriptions-item>
-            <a-descriptions-item label="去标识化">
-              <a-tag :color="detail.is_deidentified ? 'green' : 'red'">
-                {{ detail.is_deidentified ? '已确认去标识化' : '未确认去标识化' }}
-              </a-tag>
             </a-descriptions-item>
           </a-descriptions>
         </section>
@@ -210,16 +175,25 @@ const riskTagLabels = ref({})
 const drawerTitle = computed(() =>
   detail.value.question_no ? `题目详情 · ${detail.value.question_no}` : '题目详情'
 )
-const answer = computed(() => {
-  if (typeof detail.value.answer === 'string') {
-    return { suggestion: detail.value.answer }
-  }
-  return detail.value.answer || {}
-})
-const precautions = computed(() => {
-  const value = answer.value.precautions
-  if (Array.isArray(value)) return value.filter(Boolean)
-  return value ? [value] : []
+const answerText = computed(() => {
+  const value = detail.value.answer
+  if (value === undefined || value === null) return ''
+  if (typeof value === 'string') return value
+  if (typeof value !== 'object') return String(value)
+
+  const precautions = Array.isArray(value.precautions)
+    ? value.precautions.filter(Boolean).join('\n')
+    : value.precautions
+  const sections = [
+    ['用药建议', value.suggestion],
+    ['用法用量', value.dosage],
+    ['注意事项', precautions],
+    ['药物相互作用', value.interaction],
+    ['就医提醒', value.warning]
+  ].filter(([, content]) => String(content || '').trim())
+
+  if (sections.length === 1) return String(sections[0][1])
+  return sections.map(([label, content]) => `${label}：${content}`).join('\n\n')
 })
 const containsChinese = (value) => /[\u3400-\u9fff]/u.test(String(value || ''))
 const isChineseDisplay = (value) =>
@@ -263,13 +237,6 @@ const riskTags = computed(() => {
     .map((label) => (isChineseDisplay(label) ? String(label) : '其他风险标签'))
     .filter((label, index, all) => all.indexOf(label) === index)
 })
-const upgradeReasons = computed(() =>
-  Array.isArray(detail.value.upgrade_reasons)
-    ? detail.value.upgrade_reasons.filter(Boolean)
-    : detail.value.upgrade_reasons
-      ? [detail.value.upgrade_reasons]
-      : []
-)
 const auditLogs = computed(() =>
   Array.isArray(detail.value.audit_log) ? detail.value.audit_log : []
 )
@@ -417,8 +384,7 @@ defineExpose({ open })
   border-radius: var(--border-radius-medium);
 }
 
-.content-block,
-.answer-block {
+.content-block {
   padding: 16px;
   color: var(--color-text-1);
   font-size: 14px;
@@ -433,42 +399,15 @@ defineExpose({ open })
   white-space: pre-wrap;
 }
 
-.answer-list {
+.answer-content {
+  white-space: pre-wrap;
+}
+
+.risk-tag-list {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-}
-
-.answer-block {
-  h4 {
-    margin: 0 0 8px;
-    color: var(--color-text-1);
-    font-size: 14px;
-    font-weight: 600;
-  }
-
-  p {
-    margin: 0;
-    white-space: pre-wrap;
-  }
-
-  ul {
-    margin: 0;
-    padding-left: 20px;
-  }
-
-  li + li {
-    margin-top: 6px;
-  }
-}
-
-.plain-list {
-  margin: 0;
-  padding-left: 20px;
-
-  li + li {
-    margin-top: 6px;
-  }
+  align-items: flex-start;
+  gap: 6px;
 }
 
 .reward-text {
@@ -503,8 +442,7 @@ defineExpose({ open })
     grid-template-columns: 1fr;
   }
 
-  .content-block,
-  .answer-block {
+  .content-block {
     padding: 12px;
   }
 }

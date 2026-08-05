@@ -156,68 +156,13 @@
 
         <section class="form-section">
           <h3>AI 回答</h3>
-          <a-form-item field="answer.suggestion" label="用药建议">
+          <a-form-item field="answer" label="回答内容">
             <a-textarea
-              v-model="formData.answer.suggestion"
-              placeholder="请输入用药建议"
+              v-model="formData.answer"
+              placeholder="请输入完整 AI 回答"
               :max-length="3000"
               show-word-limit
-              :auto-size="{ minRows: 3, maxRows: 10 }"
-            />
-          </a-form-item>
-          <a-form-item field="answer.dosage" label="用法用量">
-            <a-textarea
-              v-model="formData.answer.dosage"
-              placeholder="选填，请输入用法用量"
-              :max-length="2000"
-              show-word-limit
-              :auto-size="{ minRows: 2, maxRows: 8 }"
-            />
-          </a-form-item>
-          <a-form-item field="answer.precautions" label="注意事项">
-            <div class="precaution-list">
-              <div
-                v-for="(_, index) in formData.answer.precautions"
-                :key="index"
-                class="precaution-row"
-              >
-                <a-textarea
-                  v-model="formData.answer.precautions[index]"
-                  :placeholder="`注意事项 ${index + 1}`"
-                  :max-length="500"
-                  :auto-size="{ minRows: 2, maxRows: 5 }"
-                />
-                <a-button
-                  type="text"
-                  status="danger"
-                  :disabled="formData.answer.precautions.length === 1"
-                  @click="removePrecaution(index)"
-                >
-                  删除
-                </a-button>
-              </div>
-              <a-button type="secondary" @click="addPrecaution">
-                <template #icon><icon-plus /></template>
-                添加注意事项
-              </a-button>
-            </div>
-          </a-form-item>
-          <a-form-item field="answer.interaction" label="药物相互作用">
-            <a-textarea
-              v-model="formData.answer.interaction"
-              placeholder="选填，请输入药物相互作用"
-              :max-length="2000"
-              show-word-limit
-              :auto-size="{ minRows: 2, maxRows: 8 }"
-            />
-          </a-form-item>
-          <a-form-item field="answer.warning" label="就医提醒">
-            <a-textarea
-              v-model="formData.answer.warning"
-              placeholder="选填，请输入需要就医的情形"
-              :max-length="2000"
-              show-word-limit
-              :auto-size="{ minRows: 2, maxRows: 8 }"
+              :auto-size="{ minRows: 6, maxRows: 14 }"
             />
           </a-form-item>
         </section>
@@ -225,20 +170,23 @@
         <section class="form-section">
           <h3>风险与来源</h3>
           <a-form-item field="risk_tags" label="风险标签">
-            <a-select
-              v-if="riskTagOptions.length"
-              v-model="formData.risk_tags"
-              :options="riskTagOptions"
-              placeholder="请选择题目实际命中的风险标签"
-              multiple
-              allow-search
-              allow-clear
-            />
-            <a-empty v-else description="暂无可选风险规则" />
-            <div v-if="riskRuleGuidance.length" class="risk-guidance-list">
-              <div v-for="rule in riskRuleGuidance" :key="rule.key">
-                <strong>{{ rule.label }}</strong>
-                <p>{{ rule.description }}</p>
+            <div class="risk-tag-content">
+              <a-select
+                v-if="riskTagOptions.length"
+                v-model="formData.risk_tags"
+                :options="riskTagOptions"
+                :format-label="formatRiskTagLabel"
+                placeholder="请选择题目实际命中的风险标签"
+                multiple
+                allow-search
+                allow-clear
+              />
+              <a-empty v-else description="暂无可选风险规则" />
+              <div v-if="riskRuleGuidance.length" class="risk-guidance-list">
+                <div v-for="rule in riskRuleGuidance" :key="rule.key">
+                  <strong>{{ rule.label }}</strong>
+                  <p>{{ rule.description }}</p>
+                </div>
               </div>
             </div>
           </a-form-item>
@@ -251,18 +199,6 @@
               show-word-limit
               :auto-size="{ minRows: 3, maxRows: 8 }"
             />
-          </a-form-item>
-
-          <a-form-item
-            field="is_deidentified"
-            label="去标识化确认"
-            extra="必须人工核对，不会默认勾选"
-          >
-            <div class="deidentified-confirmation">
-              <a-checkbox v-model="formData.is_deidentified">
-                已确认题目、回答和来源中不含可识别患者或其他个人的信息
-              </a-checkbox>
-            </div>
           </a-form-item>
         </section>
 
@@ -366,20 +302,12 @@ const createInitialForm = () => ({
   disease_type: '',
   department: '',
   question: '',
-  answer: {
-    suggestion: '',
-    dosage: '',
-    precautions: [''],
-    interaction: '',
-    warning: ''
-  },
+  answer: '',
   risk_tags: [],
   base_level: '',
   final_level: '',
-  upgrade_reasons: [],
   unit_reward_cent: undefined,
   source_reference: '',
-  is_deidentified: false,
   lifecycle_status: 'draft'
 })
 
@@ -523,6 +451,7 @@ const riskTagLabel = (tag) => {
   const label = riskTagLabelMap.value[String(tag)]
   return isChineseDisplay(label) ? label : '其他风险标签'
 }
+const formatRiskTagLabel = (option) => riskTagLabel(option?.value)
 const riskRuleLabel = (rule) =>
   isChineseDisplay(rule?.label) ? rule.label : '风险升级规则'
 const departmentOptions = computed(() => {
@@ -708,29 +637,13 @@ const rules = {
     { required: true, message: '请输入审核问题' },
     { maxLength: 2000, message: '审核问题不能超过 2000 个字符' }
   ],
-  'answer.suggestion': [
-    { required: true, message: '请输入用药建议' },
-    { maxLength: 3000, message: '用药建议不能超过 3000 个字符' }
+  answer: [
+    { required: true, message: '请输入 AI 回答' },
+    { maxLength: 3000, message: 'AI 回答不能超过 3000 个字符' }
   ],
-  'answer.dosage': [{ maxLength: 2000, message: '用法用量不能超过 2000 个字符' }],
-  'answer.interaction': [
-    { maxLength: 2000, message: '药物相互作用不能超过 2000 个字符' }
-  ],
-  'answer.warning': [{ maxLength: 2000, message: '就医提醒不能超过 2000 个字符' }],
   source_reference: [
     { required: true, message: '请填写来源依据' },
     { maxLength: 2000, message: '来源依据不能超过 2000 个字符' }
-  ],
-  is_deidentified: [
-    {
-      validator: (value, callback) => {
-        if (value !== true) {
-          callback('请确认题目内容已完成去标识化')
-          return
-        }
-        callback()
-      }
-    }
   ]
 }
 
@@ -741,16 +654,9 @@ const serializeEditableForm = () =>
     disease_type: formData.disease_type,
     department: formData.department,
     question: formData.question,
-    answer: {
-      suggestion: formData.answer.suggestion,
-      dosage: formData.answer.dosage,
-      precautions: [...formData.answer.precautions],
-      interaction: formData.answer.interaction,
-      warning: formData.answer.warning
-    },
+    answer: formData.answer,
     risk_tags: [...formData.risk_tags],
-    source_reference: formData.source_reference,
-    is_deidentified: formData.is_deidentified
+    source_reference: formData.source_reference
   })
 
 const isDirty = computed(
@@ -799,17 +705,28 @@ const sourceReferenceText = (value) => {
   return JSON.stringify(value, null, 2)
 }
 
+const answerText = (value) => {
+  if (value === undefined || value === null) return ''
+  if (typeof value === 'string') return value
+  if (typeof value !== 'object') return String(value)
+
+  const precautions = Array.isArray(value.precautions)
+    ? value.precautions.filter(Boolean).join('\n')
+    : value.precautions
+  const sections = [
+    ['用药建议', value.suggestion],
+    ['用法用量', value.dosage],
+    ['注意事项', precautions],
+    ['药物相互作用', value.interaction],
+    ['就医提醒', value.warning]
+  ].filter(([, content]) => String(content || '').trim())
+
+  if (sections.length === 1) return String(sections[0][1])
+  return sections.map(([label, content]) => `${label}：${content}`).join('\n\n')
+}
+
 const hydrateForm = (record = {}) => {
   const initial = createInitialForm()
-  const answer =
-    typeof record.answer === 'string'
-      ? { suggestion: record.answer }
-      : record.answer || {}
-  const precautions = Array.isArray(answer.precautions)
-    ? answer.precautions.map((item) => String(item ?? ''))
-    : answer.precautions
-      ? [String(answer.precautions)]
-      : ['']
 
   Object.assign(formData, initial, {
     id: record.id,
@@ -828,24 +745,14 @@ const hydrateForm = (record = {}) => {
     disease_type: record.disease_type || '',
     department: record.department || '',
     question: record.question || '',
-    answer: {
-      suggestion: answer.suggestion || '',
-      dosage: answer.dosage || '',
-      precautions: precautions.length ? precautions : [''],
-      interaction: answer.interaction || '',
-      warning: answer.warning || ''
-    },
+    answer: answerText(record.answer),
     risk_tags: Array.isArray(record.risk_tags)
       ? record.risk_tags.map((item) => String(item))
       : [],
     base_level: record.base_level || '',
     final_level: record.final_level || '',
-    upgrade_reasons: Array.isArray(record.upgrade_reasons)
-      ? [...record.upgrade_reasons]
-      : [],
     unit_reward_cent: record.unit_reward_cent,
     source_reference: sourceReferenceText(record.source_reference),
-    is_deidentified: record.is_deidentified === true || record.is_deidentified === 1,
     lifecycle_status: record.lifecycle_status || 'draft'
   })
 }
@@ -897,15 +804,6 @@ const open = async (openMode = 'add', record = null, provided = null) => {
 
 const retryLoad = () => loadInitial(suppliedStandards.value)
 
-const addPrecaution = () => {
-  formData.answer.precautions.push('')
-}
-
-const removePrecaution = (index) => {
-  if (formData.answer.precautions.length === 1) return
-  formData.answer.precautions.splice(index, 1)
-}
-
 const trimValue = (value) => String(value || '').trim()
 
 const buildPayload = () => ({
@@ -915,15 +813,10 @@ const buildPayload = () => ({
   department: trimValue(formData.department),
   question: trimValue(formData.question),
   answer: {
-    suggestion: trimValue(formData.answer.suggestion),
-    dosage: trimValue(formData.answer.dosage),
-    precautions: formData.answer.precautions.map(trimValue).filter(Boolean),
-    interaction: trimValue(formData.answer.interaction),
-    warning: trimValue(formData.answer.warning)
+    suggestion: trimValue(formData.answer)
   },
   risk_tags: [...formData.risk_tags],
-  source_reference: trimValue(formData.source_reference),
-  is_deidentified: formData.is_deidentified === true
+  source_reference: trimValue(formData.source_reference)
 })
 
 const submit = async () => {
@@ -1096,26 +989,17 @@ defineExpose({ open })
   }
 }
 
-.precaution-list {
+.risk-tag-content {
   display: flex;
   width: 100%;
+  min-width: 0;
   flex-direction: column;
   gap: 12px;
 }
 
-.precaution-row {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-
-  :deep(.arco-textarea-wrapper) {
-    flex: 1;
-  }
-}
-
 .risk-guidance-list {
   display: flex;
-  margin-top: 12px;
+  width: 100%;
   flex-direction: column;
   gap: 8px;
 
@@ -1139,15 +1023,6 @@ defineExpose({ open })
   }
 }
 
-.deidentified-confirmation {
-  width: 100%;
-  padding: 16px;
-  background: var(--color-fill-1);
-  border: 1px solid var(--color-border-2);
-  border-radius: var(--border-radius-medium);
-  line-height: 22px;
-}
-
 .calculation-tip {
   margin-bottom: 16px;
 }
@@ -1159,15 +1034,6 @@ defineExpose({ open })
 @media (max-width: 575px) {
   .selected-drug-card {
     grid-template-columns: 1fr;
-  }
-
-  .precaution-row {
-    align-items: stretch;
-    flex-direction: column;
-
-    button {
-      align-self: flex-end;
-    }
   }
 }
 </style>

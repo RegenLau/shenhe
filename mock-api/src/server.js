@@ -2577,8 +2577,8 @@ function normalizeQuestionPayload(payload = {}, currentItem = null) {
     interaction: String(sourceAnswer.interaction || '').trim(),
     warning: String(sourceAnswer.warning || '').trim()
   }
-  if (!answer.suggestion) return { error: '请输入 AI 回答中的用药建议' }
-  if (answer.suggestion.length > 3000) return { error: '用药建议不能超过 3000 个字符' }
+  if (!answer.suggestion) return { error: '请输入 AI 回答' }
+  if (answer.suggestion.length > 3000) return { error: 'AI 回答不能超过 3000 个字符' }
   if (
     answer.dosage.length > 2000 ||
     answer.interaction.length > 2000 ||
@@ -2591,9 +2591,6 @@ function normalizeQuestionPayload(payload = {}, currentItem = null) {
   const sourceReference = String(payload.source_reference || '').trim()
   if (!sourceReference) return { error: '请填写题目的说明书、指南或文献依据' }
   if (sourceReference.length > 2000) return { error: '来源依据不能超过 2000 个字符' }
-  if (payload.is_deidentified !== true) {
-    return { error: '题目必须完成去标识化确认后才能保存' }
-  }
 
   const submittedRiskTags = Array.isArray(payload.risk_tags)
     ? payload.risk_tags.map((item) => String(item).trim()).filter(Boolean)
@@ -2637,6 +2634,8 @@ function serializeQuestionBankItem(item) {
   const publicItem = { ...item }
   delete publicItem.assigned_doctor_ids
   delete publicItem.assignment_count
+  delete publicItem.is_deidentified
+  delete publicItem.upgrade_reasons
   publicItem.risk_tag_names = resolveRiskTagNames(
     item.risk_tags,
     questionBankFixture.risk_tag_labels
@@ -2825,7 +2824,7 @@ app.post('/core/product/question-bank/changeStatus', (req, res) => {
     return
   }
   if (status === 'available' && item.is_deidentified !== true) {
-    res.json(failure(422, '未完成去标识化确认，不能设为可分配'))
+    res.json(failure(422, '题目安全校验未通过，不能设为可分配'))
     return
   }
 
