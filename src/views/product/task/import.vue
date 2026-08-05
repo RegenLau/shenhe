@@ -16,9 +16,9 @@
 
     <section v-if="currentStep === 1" class="step-content">
       <a-alert type="info" show-icon>
-        模板需填写医生姓名、手机号、任务数量和导入日期（填写如
-        2026-07-26），单条审核任务固定 50
-        积分。同一医生同一导入日期不能重复导入，日期不同可再次导入。
+        模板需填写医生姓名、手机号、任务积分和创建日期（如
+        2026-08-05）。系统会从题库随机匹配 100 / 200 / 300
+        积分题目，精确组成每行任务积分；同一医生同一创建日期不能重复导入。
       </a-alert>
 
       <a-upload
@@ -26,14 +26,14 @@
         draggable
         :auto-upload="false"
         :limit="1"
-        accept=".csv"
+        accept=".xlsx,.csv"
         class="roster-upload"
       >
         <template #upload-button>
           <div class="upload-trigger">
             <icon-upload :size="36" />
             <strong>点击或拖拽上传名单</strong>
-            <span>V1.0 支持 .csv，文件不超过 10MB</span>
+            <span>支持 .xlsx / .csv，文件不超过 10MB</span>
           </div>
         </template>
       </a-upload>
@@ -43,8 +43,8 @@
         <div class="field-list">
           <span>医生姓名</span>
           <span>手机号</span>
-          <span>任务数量</span>
-          <span>导入日期</span>
+          <span>任务积分</span>
+          <span>创建日期</span>
         </div>
       </div>
 
@@ -66,16 +66,20 @@
           <strong>{{ formatNumber(preview.summary.total_rows) }}</strong>
         </div>
         <div>
-          <span>新建账号</span>
-          <strong>{{ formatNumber(preview.summary.new_account_count) }}</strong>
+          <span>目标总积分</span>
+          <strong>{{ formatPoints(summaryTargetPoints) }}</strong>
         </div>
         <div>
-          <span>复用账号</span>
-          <strong>{{ formatNumber(preview.summary.reused_account_count) }}</strong>
+          <span>匹配题数</span>
+          <strong>{{ formatNumber(summaryMatchedItemCount) }} 题</strong>
         </div>
-        <div>
-          <span>分配任务</span>
-          <strong>{{ formatNumber(preview.summary.total_item_count) }} 条</strong>
+        <div class="level-summary-card">
+          <span>A / B / C 题数</span>
+          <div class="level-counts">
+            <a-tag color="green">A {{ levelCount(summaryLevelSummary, 'A') }}</a-tag>
+            <a-tag color="orange">B {{ levelCount(summaryLevelSummary, 'B') }}</a-tag>
+            <a-tag color="red">C {{ levelCount(summaryLevelSummary, 'C') }}</a-tag>
+          </div>
         </div>
       </div>
 
@@ -89,51 +93,64 @@
       </a-alert>
       <a-alert v-else type="success" show-icon class="preview-alert">
         全部 {{ preview.summary.valid_rows }} 行校验通过，将创建
-        {{ preview.summary.task_count }} 个任务单，预计总积分
-        {{ formatPoints(preview.summary.total_reward_cent) }}。
+        {{ preview.summary.task_count }} 个任务单（新建账号
+        {{ preview.summary.new_account_count }} 个、复用账号
+        {{ preview.summary.reused_account_count }} 个），目标总积分
+        {{ formatPoints(summaryTargetPoints) }}。
       </a-alert>
 
       <a-table
         :data="preview.rows"
         :pagination="false"
         :bordered="{ wrapper: true, cell: false }"
-        :scroll="{ x: 860 }"
+        :scroll="{ x: 1160 }"
         row-key="row_no"
       >
         <template #columns>
           <a-table-column title="行号" data-index="row_no" :width="70" />
           <a-table-column title="医生姓名" data-index="doctor_name" :width="110" />
           <a-table-column title="手机号" data-index="doctor_phone" :width="130" />
-          <a-table-column title="导入日期" data-index="import_date" :width="120">
+          <a-table-column title="创建日期" data-index="create_date" :width="120">
             <template #cell="{ record }">
-              {{ record.import_date || '—' }}
+              {{ getCreateDate(record) }}
             </template>
           </a-table-column>
-          <a-table-column title="任务数量" data-index="item_count" :width="100">
+          <a-table-column title="任务积分" data-index="target_points" :width="110">
             <template #cell="{ record }">
-              {{ formatNumber(record.item_count) }} 条
+              {{ formatPoints(getTargetPoints(record)) }}
             </template>
           </a-table-column>
-          <a-table-column title="预计积分" data-index="total_reward_cent" :width="110">
+          <a-table-column title="匹配题数" data-index="matched_item_count" :width="100">
             <template #cell="{ record }">
-              {{ formatPoints(record.total_reward_cent) }}
+              {{ formatNumber(getMatchedItemCount(record)) }} 题
+            </template>
+          </a-table-column>
+          <a-table-column title="A / B / C" data-index="level_summary" :width="180">
+            <template #cell="{ record }">
+              <div class="level-counts level-counts--compact">
+                <a-tag color="green">A {{ levelCount(record.level_summary, 'A') }}</a-tag>
+                <a-tag color="orange">B {{ levelCount(record.level_summary, 'B') }}</a-tag>
+                <a-tag color="red">C {{ levelCount(record.level_summary, 'C') }}</a-tag>
+              </div>
             </template>
           </a-table-column>
           <a-table-column title="账号处理" data-index="account_action" :width="110">
             <template #cell="{ record }">
-              <a-tag :color="record.account_action === 'create' ? 'orange' : 'green'">
+              <a-tag
+                v-if="['create', 'reuse'].includes(record.account_action)"
+                :color="record.account_action === 'create' ? 'orange' : 'green'"
+              >
                 {{ record.account_action === 'create' ? '新建账号' : '复用账号' }}
               </a-tag>
+              <span v-else>—</span>
             </template>
           </a-table-column>
-          <a-table-column title="校验结果" data-index="validation_status" :width="110">
+          <a-table-column title="校验结果" data-index="validation_status" :width="230">
             <template #cell="{ record }">
-              <a-tooltip
-                v-if="record.validation_status === 'invalid'"
-                :content="record.validation_message"
-              >
+              <div v-if="record.validation_status === 'invalid'" class="validation-error">
                 <a-tag color="red">未通过</a-tag>
-              </a-tooltip>
+                <span>{{ getValidationMessage(record) }}</span>
+              </div>
               <a-tag v-else color="green">已通过</a-tag>
             </template>
           </a-table-column>
@@ -174,8 +191,20 @@
           <strong>{{ formatNumber(result.created_task_count) }}</strong>
         </div>
         <div>
-          <span>任务总量</span>
-          <strong>{{ formatNumber(result.assigned_item_count) }} 条</strong>
+          <span>任务总积分</span>
+          <strong>{{ formatPoints(resultTotalPoints) }}</strong>
+        </div>
+        <div>
+          <span>匹配题数</span>
+          <strong>{{ formatNumber(resultMatchedItemCount) }} 题</strong>
+        </div>
+        <div class="level-summary-card">
+          <span>A / B / C 题数</span>
+          <div class="level-counts">
+            <a-tag color="green">A {{ levelCount(result.level_summary, 'A') }}</a-tag>
+            <a-tag color="orange">B {{ levelCount(result.level_summary, 'B') }}</a-tag>
+            <a-tag color="red">C {{ levelCount(result.level_summary, 'C') }}</a-tag>
+          </div>
         </div>
       </div>
 
@@ -189,7 +218,7 @@
 </template>
 
 <script setup>
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import tool from '@/utils/tool'
 import taskApi from '@/api/product/task'
@@ -210,11 +239,13 @@ const emptySummary = {
   new_account_count: 0,
   reused_account_count: 0,
   task_count: 0,
-  total_item_count: 0,
-  total_reward_cent: 0
+  total_target_points: 0,
+  matched_item_count: 0,
+  level_summary: { A: 0, B: 0, C: 0 }
 }
 
 const preview = reactive({
+  preview_token: '',
   preview_id: '',
   file_name: '',
   rows: [],
@@ -227,16 +258,89 @@ const result = reactive({
   reused_account_count: 0,
   created_task_count: 0,
   assigned_item_count: 0,
-  total_reward_cent: 0
+  matched_item_count: 0,
+  total_target_points: 0,
+  total_reward_cent: 0,
+  level_summary: { A: 0, B: 0, C: 0 }
 })
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
-const formatPoints = (value) => `${formatNumber(Number(value || 0) / 100)} 积分`
+const formatPoints = (value) => `${formatNumber(value)} 积分`
+
+const levelCount = (summary, level) => {
+  const normalizedLevel = String(level).toUpperCase()
+  return formatNumber(
+    summary?.[normalizedLevel] ??
+      summary?.[normalizedLevel.toLowerCase()] ??
+      summary?.[`${normalizedLevel.toLowerCase()}_count`] ??
+      0
+  )
+}
+
+const summaryTargetPoints = computed(() => {
+  if (preview.summary.total_target_points != null) {
+    return Number(preview.summary.total_target_points || 0)
+  }
+  return Number(preview.summary.total_reward_cent || 0) / 100
+})
+
+const summaryMatchedItemCount = computed(
+  () =>
+    Number(
+      preview.summary.matched_item_count ??
+        preview.summary.total_item_count ??
+        0
+    ) || 0
+)
+
+const summaryLevelSummary = computed(
+  () => preview.summary.level_summary || { A: 0, B: 0, C: 0 }
+)
+
+const resultTotalPoints = computed(() => {
+  if (result.total_target_points != null) {
+    return Number(result.total_target_points || 0)
+  }
+  return Number(result.total_reward_cent || 0) / 100
+})
+
+const resultMatchedItemCount = computed(
+  () => Number(result.matched_item_count ?? result.assigned_item_count ?? 0) || 0
+)
+
+const getCreateDate = (record) =>
+  record.create_date || record.creation_date || record.import_date || '—'
+
+const getTargetPoints = (record) => {
+  if (record.target_points != null) return Number(record.target_points || 0)
+  return Number(record.total_reward_cent || 0) / 100
+}
+
+const getMatchedItemCount = (record) =>
+  Number(record.matched_item_count ?? record.item_count ?? 0) || 0
+
+const getValidationMessage = (record) => {
+  if (record.validation_message) return record.validation_message
+  if (Array.isArray(record.errors)) return record.errors.join('；')
+  return '数据未通过校验'
+}
+
+const readFileAsBase64 = (file) =>
+  new Promise((resolve, reject) => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const [, content = ''] = String(reader.result || '').split(',', 2)
+      resolve(content)
+    }
+    reader.onerror = () => reject(reader.error)
+    reader.readAsDataURL(file)
+  })
 
 const reset = () => {
   currentStep.value = 1
   fileList.value = []
   Object.assign(preview, {
+    preview_token: '',
     preview_id: '',
     file_name: '',
     rows: [],
@@ -248,7 +352,10 @@ const reset = () => {
     reused_account_count: 0,
     created_task_count: 0,
     assigned_item_count: 0,
-    total_reward_cent: 0
+    matched_item_count: 0,
+    total_target_points: 0,
+    total_reward_cent: 0,
+    level_summary: { A: 0, B: 0, C: 0 }
   })
 }
 
@@ -289,16 +396,35 @@ const previewImport = async () => {
     return
   }
 
+  if (file.size > 10 * 1024 * 1024) {
+    Message.error('名单文件不能超过 10MB')
+    return
+  }
+
+  const fileName = fileItem.name || file.name
+  const fileType = String(fileName).split('.').pop()?.toLowerCase()
+  if (!['xlsx', 'csv'].includes(fileType)) {
+    Message.error('仅支持 .xlsx 或 .csv 名单文件')
+    return
+  }
+
   previewLoading.value = true
   try {
-    const response = await taskApi.previewImport({
-      file_name: fileItem.name || file.name,
+    const payload = {
+      file_name: fileName,
+      file_type: fileType,
       file_size: file.size,
-      file_content: await file.text()
-    })
+      ...(fileType === 'xlsx'
+        ? { file_content_base64: await readFileAsBase64(file) }
+        : { file_content: await file.text() })
+    }
+    const response = await taskApi.previewImport(payload)
 
     if (response.code === 200) {
-      Object.assign(preview, response.data)
+      const data = response.data || {}
+      Object.assign(preview, data, {
+        preview_token: data.preview_token || data.preview_id || ''
+      })
       currentStep.value = 2
     }
   } catch {
@@ -316,7 +442,7 @@ const backToUpload = () => {
 const confirmImport = async () => {
   confirmLoading.value = true
   try {
-    const response = await taskApi.confirmImport(preview.preview_id)
+    const response = await taskApi.confirmImport(preview.preview_token)
     if (response.code === 200) {
       Object.assign(result, response.data)
       currentStep.value = 3
@@ -404,7 +530,7 @@ defineExpose({ open })
 .summary-grid,
 .result-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 12px;
 
   div {
@@ -424,6 +550,31 @@ defineExpose({ open })
     margin-top: 6px;
     color: var(--color-text-1);
     font-size: 20px;
+  }
+}
+
+.level-counts {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+
+.level-counts--compact {
+  margin-top: 0;
+  flex-wrap: nowrap;
+}
+
+.validation-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+
+  span {
+    color: rgb(var(--danger-6));
+    font-size: 12px;
+    line-height: 22px;
+    white-space: normal;
   }
 }
 

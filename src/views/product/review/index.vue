@@ -9,7 +9,7 @@
 
     <a-alert type="info" show-icon class="review-tip">
       审核记录来自医生已提交的逐条审核结果。当前 V1
-      使用模拟问答内容验证流程，不代表真实患者数据。
+      使用审核题库模拟数据验证流程，不代表真实患者数据。
     </a-alert>
 
     <a-alert v-if="tableError" type="error" show-icon class="table-error">
@@ -33,7 +33,7 @@
           <a-form-item field="keyword" label="关键词">
             <a-input
               v-model="searchForm.keyword"
-              placeholder="记录号、任务号、医生、手机号或问题"
+              placeholder="药品、规格、厂家、问题、医生或编号"
               allow-clear
             />
           </a-form-item>
@@ -49,25 +49,80 @@
           </a-form-item>
         </a-col>
         <a-col :xs="24" :sm="8">
-          <a-form-item field="issue_type" label="问题类型">
+          <a-form-item field="issue_type" label="不通过类型">
             <sa-select
               v-model="searchForm.issue_type"
               dict="review_issue_type"
-              placeholder="全部类型"
+              placeholder="全部不通过类型"
               allow-clear
             />
           </a-form-item>
         </a-col>
       </template>
 
+      <template #drug_image_url="{ record }">
+        <div class="drug-image-cell">
+          <a-image
+            v-if="drugImageUrl(record)"
+            :src="drugImageUrl(record)"
+            :alt="`${record.drug_name || '药品'}图片`"
+            width="56"
+            height="56"
+            fit="cover"
+          >
+            <template #error><span>图片不可用</span></template>
+          </a-image>
+          <span v-else>暂无图片</span>
+        </div>
+      </template>
+
+      <template #drug_name="{ record }">
+        <div class="drug-text-cell">
+          <strong :title="record.drug_name">{{ record.drug_name || '—' }}</strong>
+          <span v-if="record.drug_type" :title="record.drug_type">
+            {{ record.drug_type }}
+          </span>
+        </div>
+      </template>
+
+      <template #drug_specification="{ record }">
+        <span class="specification-cell" :title="drugSpecification(record)">
+          {{ drugSpecification(record) }}
+        </span>
+      </template>
+
+      <template #drug_manufacturer="{ record }">
+        <span class="specification-cell" :title="record.drug_manufacturer || '—'">
+          {{ record.drug_manufacturer || '—' }}
+        </span>
+      </template>
+
       <template #question="{ record }">
         <div class="question-cell">
           <strong :title="record.question">{{ record.question || '—' }}</strong>
-          <div class="question-meta">
-            <span :title="record.drug_name">{{ record.drug_name || '药品待补充' }}</span>
-            <span v-if="record.drug_type">· {{ record.drug_type }}</span>
-            <span v-if="record.disease_type">· {{ record.disease_type }}</span>
-          </div>
+          <span>{{ record.question_no || '题目编号未记录' }}</span>
+        </div>
+      </template>
+
+      <template #final_level="{ record }">
+        <sa-dict
+          v-if="['A', 'B', 'C'].includes(String(record.final_level).toUpperCase())"
+          :value="String(record.final_level).toUpperCase()"
+          dict="question_level"
+        />
+        <span v-else class="empty-text">—</span>
+      </template>
+
+      <template #unit_reward_cent="{ record }">
+        <strong class="reward-cell">{{ formatReward(record.unit_reward_cent) }}</strong>
+      </template>
+
+      <template #type_info="{ record }">
+        <div class="type-cell">
+          <strong :title="record.type_name">{{ record.type_name || '题型未记录' }}</strong>
+          <span :title="questionTypeSubtitle(record)">
+            {{ questionTypeSubtitle(record) }}
+          </span>
         </div>
       </template>
 
@@ -116,9 +171,25 @@ const maskPhone = (value) =>
   String(value || '').replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2')
 
 const doctorSubtitle = (record) => {
-  return [maskPhone(record.doctor_phone), record.department]
+  return [maskPhone(record.doctor_phone), record.doctor_department || record.department]
     .filter(Boolean)
     .join(' · ') || '—'
+}
+
+const drugImageUrl = (record = {}) =>
+  record.drug_image_url || record.drug_image || record.image_url || ''
+
+const drugSpecification = (record = {}) =>
+  record.drug_specification || record.specification || '—'
+
+const questionTypeSubtitle = (record = {}) =>
+  [record.disease_type, record.question_department].filter(Boolean).join(' · ') ||
+  '未记录疾病分类或科室归属'
+
+const formatReward = (value) => {
+  const number = Number(value)
+  if (value === undefined || value === null || !Number.isFinite(number)) return '—'
+  return `${(number / 100).toLocaleString('zh-CN')} 积分 / 条`
 }
 
 const loadList = async (params) => {
@@ -153,7 +224,14 @@ const options = reactive({
 })
 
 const columns = reactive([
-  { title: '审核问题', dataIndex: 'question', width: 290, fixed: 'left' },
+  { title: '药品图片', dataIndex: 'drug_image_url', width: 88, fixed: 'left' },
+  { title: '药品名称', dataIndex: 'drug_name', width: 160 },
+  { title: '规格', dataIndex: 'drug_specification', width: 150 },
+  { title: '生产厂家', dataIndex: 'drug_manufacturer', width: 190 },
+  { title: '审核问题', dataIndex: 'question', width: 320 },
+  { title: '任务档位', dataIndex: 'final_level', width: 105, align: 'center' },
+  { title: '任务积分', dataIndex: 'unit_reward_cent', width: 120, align: 'right' },
+  { title: '问题类型', dataIndex: 'type_info', width: 210 },
   { title: '医生', dataIndex: 'doctor_name', width: 170 },
   { title: '任务编号', dataIndex: 'task_no', width: 160 },
   {
@@ -164,7 +242,7 @@ const columns = reactive([
     width: 95,
     align: 'center'
   },
-  { title: '问题类型', dataIndex: 'issue_type', width: 140 },
+  { title: '不通过类型', dataIndex: 'issue_type', width: 140 },
   { title: '审核时间', dataIndex: 'review_time', width: 165 }
 ])
 
@@ -221,41 +299,66 @@ onMounted(refresh)
   max-width: 100%;
 }
 
+.drug-text-cell,
 .question-cell,
+.type-cell,
 .doctor-cell {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 4px;
 
-  strong {
+  strong,
+  span {
     overflow: hidden;
-    color: var(--color-text-1);
-    font-size: 14px;
-    font-weight: 500;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
+
+  strong {
+    color: var(--color-text-1);
+    font-size: 14px;
+    font-weight: 500;
+  }
+
+  span {
+    color: var(--color-text-3);
+    font-size: 12px;
+  }
 }
 
-.question-meta,
-.doctor-cell span {
+.drug-image-cell {
+  display: flex;
+  width: 56px;
+  height: 56px;
+  align-items: center;
+  justify-content: center;
   overflow: hidden;
   color: var(--color-text-3);
   font-size: 12px;
+  line-height: 18px;
+  text-align: center;
+  background: var(--color-fill-1);
+  border: 1px solid var(--color-border-1);
+  border-radius: var(--border-radius-medium);
+
+  :deep(.arco-image) {
+    display: block;
+  }
+}
+
+.specification-cell {
+  display: block;
+  overflow: hidden;
+  color: var(--color-text-2);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.question-meta {
-  display: flex;
-  min-width: 0;
-  gap: 4px;
-
-  span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+.reward-cell {
+  color: rgb(var(--primary-6));
+  font-size: 14px;
+  white-space: nowrap;
 }
 
 .number-text {

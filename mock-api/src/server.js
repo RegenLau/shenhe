@@ -1,8 +1,23 @@
 import cors from 'cors'
+import ExcelJS from 'exceljs'
 import express from 'express'
 import morgan from 'morgan'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import {
+  UNIT_REWARD_CENT,
+  buildDepartmentOptions,
+  buildDrugCatalog,
+  buildQuestionBank,
+  evaluateRiskDetails,
+  planQuestionAllocation,
+  recordQuestionAllocation,
+  resolveDepartmentSelection,
+  resolveDrugSelection,
+  resolveQuestionAuditActionLabel,
+  resolveRiskTagNames,
+  summarizeQuestionBank
+} from './question-bank.js'
 
 const app = express()
 const host = process.env.MOCK_API_HOST || '127.0.0.1'
@@ -26,6 +41,7 @@ const doctorCertificationStatuses = [
 ]
 const doctorCertificateTypes = ['医师资格证', '医师执业证书']
 const doctorConfigTypes = ['hospital', 'department', 'position']
+const questionLifecycleStatuses = ['draft', 'available', 'disabled']
 const doctorConfigTypeLabels = {
   hospital: '医院',
   department: '科室',
@@ -53,13 +69,22 @@ const doctorCertifications = buildDoctorCertifications(
 )
 const reviewsPath = fileURLToPath(new URL('../data/reviews.json', import.meta.url))
 const reviewFixture = JSON.parse(readFileSync(reviewsPath, 'utf8'))
-const reviews = buildReviews(reviewFixture)
 const withdrawalsPath = fileURLToPath(new URL('../data/withdrawals.json', import.meta.url))
 const withdrawals = JSON.parse(readFileSync(withdrawalsPath, 'utf8'))
 const doctorConfigPath = fileURLToPath(
   new URL('../data/doctor-config.json', import.meta.url)
 )
 let doctorConfigRows = JSON.parse(readFileSync(doctorConfigPath, 'utf8'))
+const questionBankPath = fileURLToPath(
+  new URL('../data/question-bank.json', import.meta.url)
+)
+const questionBankFixture = JSON.parse(readFileSync(questionBankPath, 'utf8'))
+const drugCatalogRows = buildDrugCatalog(questionBankFixture)
+const questionBankRows = buildQuestionBank(questionBankFixture)
+const taskItems = buildInitialTaskItems(tasks, questionBankRows)
+syncInitialWithdrawalAmounts(withdrawals, taskItems)
+// Submitted review records freeze the question-bank metadata available at submission time.
+const reviews = buildReviews(reviewFixture, { taskItems })
 workbenchFixture.doctors.total = doctors.length
 workbenchFixture.doctors.active = doctors.filter(
   (doctor) => doctor.account_status === 'active'
@@ -86,9 +111,13 @@ let nextDoctorId = Math.max(...doctors.map((doctor) => doctor.id)) + 1
 let nextDoctorConfigId =
   doctorConfigRows.reduce((maxId, item) => Math.max(maxId, Number(item.id) || 0), 0) +
   1
+let nextQuestionId =
+  questionBankRows.reduce((maxId, item) => Math.max(maxId, Number(item.id) || 0), 0) +
+  1
+let nextTaskItemId = taskItems.length + 1
 
 app.use(cors())
-app.use(express.json({ limit: '12mb' }))
+app.use(express.json({ limit: '16mb' }))
 app.use(morgan('dev'))
 
 const success = (data = {}, message = 'success') => ({ code: 200, message, data })
@@ -166,7 +195,13 @@ function normalizeDoctorConfigPayload(payload = {}, fallbackType = '') {
 
 function buildDoctors(fixture = {}) {
   const records = Array.isArray(fixture.records)
-    ? fixture.records.map((record) => ({ ...record }))
+    ? fixture.records.map((record) => ({
+        ...record,
+        training_exam_status: record.training_exam_status || 'passed',
+        max_review_level: record.max_review_level || 'C',
+        review_qualification_source:
+          record.review_qualification_source || 'legacy_qualified_roster'
+      }))
     : []
   const total = Math.max(Number(fixture.total) || records.length, records.length)
   const activeTarget = Math.min(Number(fixture.active_count) || 0, total)
@@ -258,6 +293,9 @@ function buildDoctors(fixture = {}) {
         ],
       account_status: accountStatus,
       certification_status: certificationStatus,
+      training_exam_status: 'passed',
+      max_review_level: 'C',
+      review_qualification_source: 'mock_qualified_roster',
       account_source:
         accountStatus === 'active'
           ? ['import', 'manual', 'mini_program'][id % 3]
@@ -376,8 +414,128 @@ function isRejectedReview(index, total, rejectedTotal) {
   )
 }
 
-function buildReviews(fixture = {}) {
-  const contentPool = Array.isArray(fixture.content_pool) ? fixture.content_pool : []
+function reviewQuestionPool(questionBank = []) {
+  return questionBank
+    .filter(
+      (item) =>
+        item.lifecycle_status === 'available' &&
+        ['A', 'B', 'C'].includes(String(item.final_level).toUpperCase())
+    )
+    .sort(
+      (left, right) =>
+        String(left.drug_id).localeCompare(String(right.drug_id)) ||
+        String(left.type_code).localeCompare(String(right.type_code)) ||
+        Number(left.id) - Number(right.id)
+    )
+}
+
+function taskItemSnapshot(question, task, sequence, id) {
+  const completed = sequence <= Math.max(Number(task.completed_count) || 0, 0)
+
+  return {
+    id,
+    task_id: task.id,
+    sequence,
+    question_id: question.id,
+    question_no: question.question_no,
+    drug_id: question.drug_id,
+    drug_image_url: question.drug_image_url,
+    drug_name: question.drug_name,
+    drug_specification: question.drug_specification,
+    drug_type: question.drug_type,
+    drug_manufacturer: question.drug_manufacturer,
+    disease_type: question.disease_type || '',
+    department: question.department || '',
+    type_code: question.type_code,
+    type_name: question.type_name,
+    question: question.question,
+    answer: JSON.parse(JSON.stringify(question.answer)),
+    source_reference: JSON.parse(JSON.stringify(question.source_reference)),
+    risk_tags: [...question.risk_tags],
+    risk_tag_names: resolveRiskTagNames(
+      question.risk_tags,
+      questionBankFixture.risk_tag_labels
+    ),
+    base_level: question.base_level,
+    final_level: question.final_level,
+    upgrade_reasons: [...question.upgrade_reasons],
+    unit_reward_cent: question.unit_reward_cent,
+    status: completed ? 'completed' : 'pending',
+    reviewer_id: completed ? task.doctor_id : null,
+    review_result: null,
+    correction_content: null,
+    reviewed_at: null,
+    assigned_at: task.create_time
+  }
+}
+
+function buildInitialTaskItems(taskRows = [], questionBank = []) {
+  const questionPool = reviewQuestionPool(questionBank)
+  const usedQuestionIdsByDoctor = new Map()
+  const records = []
+
+  if (questionPool.length === 0) {
+    throw new Error('question bank must contain available A, B or C questions')
+  }
+
+  taskRows
+    .slice()
+    .sort((left, right) => left.id - right.id)
+    .forEach((task) => {
+      const itemCount = Math.max(Number(task.item_count) || 0, 0)
+      const doctorKey = String(task.doctor_id)
+      const usedQuestionIds =
+        usedQuestionIdsByDoctor.get(doctorKey) || new Set()
+      const selectedQuestions = []
+      const questionOffset = ((Number(task.id) - 1) * 37) % questionPool.length
+
+      for (
+        let offset = 0;
+        offset < questionPool.length && selectedQuestions.length < itemCount;
+        offset += 1
+      ) {
+        const question = questionPool[(questionOffset + offset) % questionPool.length]
+        const questionId = String(question.id)
+        if (usedQuestionIds.has(questionId)) continue
+        usedQuestionIds.add(questionId)
+        selectedQuestions.push(question)
+      }
+
+      if (selectedQuestions.length !== itemCount) {
+        throw new Error(`task ${task.task_no} cannot allocate enough unique questions`)
+      }
+
+      usedQuestionIdsByDoctor.set(doctorKey, usedQuestionIds)
+      const levelSummary = { A: 0, B: 0, C: 0 }
+      const totalRewardCent = selectedQuestions.reduce((total, question) => {
+        levelSummary[question.final_level] += 1
+        return total + Number(question.unit_reward_cent)
+      }, 0)
+
+      Object.assign(task, {
+        target_points: totalRewardCent / 100,
+        unit_reward_cent: null,
+        total_reward_cent: totalRewardCent,
+        level_summary: levelSummary,
+        pricing_version: 'V5.0',
+        pricing_model: 'question_level',
+        allocation_rule: 'random_exact_value_no_fixed_ratio',
+        settlement_cycle: 'monthly_next_month'
+      })
+
+      selectedQuestions.forEach((question, index) => {
+        records.push(taskItemSnapshot(question, task, index + 1, records.length + 1))
+      })
+      recordQuestionAllocation(questionBank, selectedQuestions, task.doctor_id)
+    })
+
+  return records
+}
+
+function buildReviews(fixture = {}, snapshots = {}) {
+  const initialTaskItems = Array.isArray(snapshots.taskItems)
+    ? snapshots.taskItems
+    : []
   const approvedComments = Array.isArray(fixture.approved_comment_templates)
     ? fixture.approved_comment_templates
     : []
@@ -411,9 +569,17 @@ function buildReviews(fixture = {}) {
         ? parseMockDateTime(task.complete_time)
         : generatedUntil
       const timeRange = Math.max(endTime - startTime, 0)
+      const taskQuestions = initialTaskItems
+        .filter((item) => item.task_id === task.id)
+        .sort((left, right) => left.sequence - right.sequence)
+        .slice(0, completedCount)
+
+      if (taskQuestions.length !== completedCount) {
+        throw new Error(`task ${task.task_no} does not have enough question items`)
+      }
 
       for (let index = 0; index < completedCount; index += 1) {
-        const content = contentPool[(task.id * 3 + index) % contentPool.length]
+        const questionSnapshot = taskQuestions[index]
         const rejected = isRejectedReview(index, completedCount, rejectedCount)
         const issueType = rejected
           ? reviewIssueTypes[(task.id + index) % reviewIssueTypes.length]
@@ -437,27 +603,75 @@ function buildReviews(fixture = {}) {
           doctor_phone: doctor?.phone || task.doctor_phone,
           hospital: doctor?.hospital || task.hospital,
           department: doctor?.department || task.department,
-          drug_name: content.drug_name,
-          drug_type: content.drug_type,
-          disease_type: content.disease_type,
-          question: content.question,
-          answer: {
-            suggestion: content.answer.suggestion,
-            dosage: content.answer.dosage,
-            precautions: [...content.answer.precautions],
-            interaction: content.answer.interaction,
-            warning: content.answer.warning
-          },
+          doctor_department: doctor?.department || task.department,
+          drug_id: questionSnapshot.drug_id,
+          drug_image_url: questionSnapshot.drug_image_url,
+          drug_name: questionSnapshot.drug_name,
+          drug_specification: questionSnapshot.drug_specification,
+          drug_type: questionSnapshot.drug_type,
+          drug_manufacturer: questionSnapshot.drug_manufacturer,
+          disease_type: questionSnapshot.disease_type,
+          question_department: questionSnapshot.department,
+          question_id: questionSnapshot.question_id,
+          question_no: questionSnapshot.question_no,
+          type_code: questionSnapshot.type_code,
+          type_name: questionSnapshot.type_name,
+          base_level: questionSnapshot.base_level,
+          final_level: questionSnapshot.final_level,
+          upgrade_reasons: [...questionSnapshot.upgrade_reasons],
+          risk_tags: [...questionSnapshot.risk_tags],
+          risk_tag_names: [...questionSnapshot.risk_tag_names],
+          unit_reward_cent: questionSnapshot.unit_reward_cent,
+          question: questionSnapshot.question,
+          answer: JSON.parse(JSON.stringify(questionSnapshot.answer)),
+          source_reference: JSON.parse(
+            JSON.stringify(questionSnapshot.source_reference)
+          ),
           result: rejected ? 'rejected' : 'approved',
           issue_type: issueType,
           review_comment: commentPool[(task.id + index) % commentPool.length],
           review_time: reviewTime
         })
+        questionSnapshot.review_result = rejected ? 'rejected' : 'approved'
+        questionSnapshot.reviewed_at = reviewTime
         reviewId += 1
       }
     })
 
   return records
+}
+
+function syncInitialWithdrawalAmounts(records = [], initialTaskItems = []) {
+  const consumedCountsByTask = new Map()
+
+  records
+    .slice()
+    .sort(
+      (left, right) =>
+        String(left.apply_time).localeCompare(String(right.apply_time)) ||
+        Number(left.id) - Number(right.id)
+    )
+    .forEach((withdrawal) => {
+      const taskId = Number(withdrawal.source_task_id)
+      const reviewCount = Math.max(Number(withdrawal.source_review_count) || 0, 0)
+      const consumedCount = consumedCountsByTask.get(taskId) || 0
+      const sourceItems = initialTaskItems
+        .filter((item) => item.task_id === taskId && item.status === 'completed')
+        .sort((left, right) => left.sequence - right.sequence)
+        .slice(consumedCount, consumedCount + reviewCount)
+
+      if (sourceItems.length !== reviewCount) {
+        throw new Error(
+          `withdrawal ${withdrawal.withdrawal_no} does not have enough completed task items`
+        )
+      }
+
+      withdrawal.amount_cent = sourceItems.reduce(
+        (total, item) => total + Number(item.unit_reward_cent),
+        0
+      )
+      consumedCountsByTask.set(taskId, consumedCount + reviewCount)
+    })
 }
 
 function summarizeWithdrawals(records = []) {
@@ -708,26 +922,45 @@ function taskDisplayTitle(task) {
   return `药品知识库审核 · ${task.import_batch_no || task.task_no}`
 }
 
-function hydrateTask(task) {
-  const doctor = doctors.find((item) => item.id === task.doctor_id)
-  if (!doctor) {
+function buildPricingSummary(levelSummary = {}) {
+  return ['A', 'B', 'C'].map((level) => {
+    const count = Number(levelSummary[level]) || 0
+    const unitRewardCent = UNIT_REWARD_CENT[level]
     return {
-      ...task,
-      display_title: taskDisplayTitle(task),
-      import_date: taskImportDate(task)
+      level,
+      count,
+      unit_reward_cent: unitRewardCent,
+      subtotal_reward_cent: count * unitRewardCent
     }
-  }
+  })
+}
 
-  return {
+function hydrateTask(task, options = {}) {
+  const includeItems = options?.includeItems === true
+  const doctor = doctors.find((item) => item.id === task.doctor_id)
+  const hydrated = {
     ...task,
+    pricing_version: task.pricing_version || 'V5.0',
     display_title: taskDisplayTitle(task),
     import_date: taskImportDate(task),
-    doctor_name: doctor.name,
-    doctor_phone: doctor.phone,
-    hospital: doctor.hospital,
-    department: doctor.department,
-    account_status: doctor.account_status
+    doctor_name: doctor?.name || task.doctor_name,
+    doctor_phone: doctor?.phone || task.doctor_phone,
+    hospital: doctor?.hospital || task.hospital,
+    department: doctor?.department || task.department,
+    account_status: doctor?.account_status || task.account_status
   }
+
+  if (task.level_summary) {
+    hydrated.pricing_summary = buildPricingSummary(task.level_summary)
+  }
+
+  if (includeItems) {
+    hydrated.task_items = taskItems
+      .filter((item) => item.task_id === task.id)
+      .sort((left, right) => left.sequence - right.sequence)
+  }
+
+  return hydrated
 }
 
 function hydrateDoctor(doctor, includeTasks = false) {
@@ -794,13 +1027,69 @@ function hydrateDoctorCertification(doctor, includeMaterials = false) {
   return result
 }
 
-function createTask(doctor, itemCount, sourceType, importBatchNo = null, importDate = null) {
+function validateTargetPoints(value) {
+  const targetPoints = Number(value)
+
+  if (!Number.isInteger(targetPoints) || targetPoints < 100) {
+    return { error: '任务积分须为不小于 100 的整数' }
+  }
+
+  if (targetPoints % 100 !== 0) {
+    return { error: '任务积分须为 100 的整数倍' }
+  }
+
+  return { targetPoints }
+}
+
+function doctorReviewEligibilityError(doctor) {
+  if (doctor.training_exam_status !== 'passed') {
+    return '该医生尚未通过审核培训与考试，无法分配任务'
+  }
+
+  if (!['A', 'B', 'C'].includes(doctor.max_review_level)) {
+    return '该医生的审核等级资格未配置'
+  }
+
+  return ''
+}
+
+function planTaskQuestions(questionRows, targetPoints, doctor, seed) {
+  const validation = validateTargetPoints(targetPoints)
+  if (validation.error) {
+    return { success: false, reason: validation.error }
+  }
+
+  const rewardCent = validation.targetPoints * 100
+  const plan = planQuestionAllocation(questionRows, rewardCent, {
+    maxLevel: doctor?.max_review_level || 'C',
+    seed,
+    doctorId: doctor?.id
+  })
+
+  if (!plan.success) {
+    const availablePoints = Math.floor(Number(plan.available_points || 0) / 100)
+    return {
+      success: false,
+      reason: `题库无法精确匹配 ${validation.targetPoints} 积分，当前可分配总额为 ${availablePoints} 积分`
+    }
+  }
+
+  return {
+    success: true,
+    target_points: validation.targetPoints,
+    total_reward_cent: rewardCent,
+    rows: plan.rows,
+    level_summary: plan.level_summary,
+    matched_item_count: plan.rows.length
+  }
+}
+
+function createTask(doctor, plan, sourceType, importBatchNo = null, importDate = null) {
   const id = nextTaskId
   nextTaskId += 1
   const createTime = formatDateTime()
   const datePart = createTime.slice(0, 10).replaceAll('-', '')
-
-  return {
+  const task = {
     id,
     task_no: `RW${datePart}${String(id).padStart(4, '0')}`,
     doctor_id: doctor.id,
@@ -812,18 +1101,73 @@ function createTask(doctor, itemCount, sourceType, importBatchNo = null, importD
     source_type: sourceType,
     import_batch_no: importBatchNo,
     import_date: importDate,
-    item_count: itemCount,
+    target_points: plan.target_points,
+    item_count: plan.matched_item_count,
     completed_count: 0,
-    unit_reward_cent: 5000,
-    total_reward_cent: itemCount * 5000,
+    unit_reward_cent: null,
+    total_reward_cent: plan.total_reward_cent,
+    level_summary: { ...plan.level_summary },
+    pricing_version: 'V5.0',
+    pricing_model: 'question_level',
+    allocation_rule: 'random_exact_value_no_fixed_ratio',
+    settlement_cycle: 'monthly_next_month',
     status: 'pending',
     create_time: createTime,
     start_time: null,
     complete_time: null
   }
+
+  recordQuestionAllocation(questionBankRows, plan.rows, doctor.id)
+  plan.rows.forEach((question, index) => {
+    taskItems.push({
+      id: nextTaskItemId,
+      task_id: id,
+      sequence: index + 1,
+      question_id: question.id,
+      question_no: question.question_no,
+      drug_id: question.drug_id,
+      drug_image_url: question.drug_image_url,
+      drug_name: question.drug_name,
+      drug_specification: question.drug_specification,
+      drug_type: question.drug_type,
+      drug_manufacturer: question.drug_manufacturer,
+      disease_type: question.disease_type || '',
+      department: question.department || '',
+      type_code: question.type_code,
+      type_name: question.type_name,
+      question: question.question,
+      answer: JSON.parse(JSON.stringify(question.answer)),
+      source_reference: JSON.parse(JSON.stringify(question.source_reference)),
+      risk_tags: [...question.risk_tags],
+      risk_tag_names: resolveRiskTagNames(
+        question.risk_tags,
+        questionBankFixture.risk_tag_labels
+      ),
+      base_level: question.base_level,
+      final_level: question.final_level,
+      upgrade_reasons: [...question.upgrade_reasons],
+      unit_reward_cent: question.unit_reward_cent,
+      status: 'pending',
+      reviewer_id: null,
+      review_result: null,
+      correction_content: null,
+      reviewed_at: null,
+      assigned_at: createTime
+    })
+    nextTaskItemId += 1
+  })
+
+  return task
 }
 
 function normalizeImportDate(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    const pad = (part) => String(part).padStart(2, '0')
+    return `${value.getUTCFullYear()}-${pad(value.getUTCMonth() + 1)}-${pad(
+      value.getUTCDate()
+    )}`
+  }
+
   const text = String(value || '').trim()
   const match = text.match(/^(\d{4})([-/])(\d{1,2})\2(\d{1,2})$/)
   if (!match) return null
@@ -841,6 +1185,252 @@ function normalizeImportDate(value) {
   }
 
   return `${match[1]}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+}
+
+function excelCellValue(cell) {
+  const value = cell?.value
+  if (value == null) return ''
+  if (value instanceof Date) return normalizeImportDate(value) || ''
+
+  if (typeof value === 'number' && /[ymd]/i.test(String(cell.numFmt || ''))) {
+    const timestamp = Math.round((value - 25569) * 86400 * 1000)
+    return normalizeImportDate(new Date(timestamp)) || ''
+  }
+
+  if (value && typeof value === 'object') {
+    if (Array.isArray(value.richText)) {
+      return value.richText.map((item) => item.text || '').join('')
+    }
+    if ('result' in value) return String(value.result ?? '').trim()
+    if ('text' in value) return String(value.text ?? '').trim()
+  }
+
+  return String(value).trim()
+}
+
+async function readTaskImportRows(payload = {}) {
+  const fileName = String(payload.file_name || '').trim()
+  const fileSize = Number(payload.file_size)
+  const isXlsx = /\.xlsx$/i.test(fileName)
+  const isCsv = /\.csv$/i.test(fileName)
+
+  if (!fileName) return { error: '请选择要导入的名单文件' }
+  if (!isXlsx && !isCsv) return { error: '名单导入仅支持 XLSX 或 CSV 文件' }
+  if (!Number.isFinite(fileSize) || fileSize <= 0) {
+    return { error: '无法读取文件大小，请重新选择文件' }
+  }
+  if (fileSize > 10 * 1024 * 1024) return { error: '名单文件不能超过 10 MB' }
+
+  if (isCsv) {
+    const fileContent = String(payload.file_content || '')
+    if (!fileContent.trim()) return { error: '无法读取 CSV 文件内容' }
+    if (Buffer.byteLength(fileContent, 'utf8') > 10 * 1024 * 1024) {
+      return { error: '名单文件不能超过 10 MB' }
+    }
+
+    try {
+      return { rows: parseCsv(fileContent) }
+    } catch {
+      return { error: 'CSV 文件格式不正确，请检查引号和换行后重试' }
+    }
+  }
+
+  const base64Content = String(payload.file_content_base64 || '').trim()
+  if (!base64Content) return { error: '无法读取 XLSX 文件内容' }
+
+  try {
+    const buffer = Buffer.from(base64Content, 'base64')
+    if (buffer.length === 0 || buffer.length > 10 * 1024 * 1024) {
+      return { error: '名单文件不能超过 10 MB' }
+    }
+    const workbook = new ExcelJS.Workbook()
+    await workbook.xlsx.load(buffer)
+    const worksheet = workbook.worksheets[0]
+    if (!worksheet) return { error: 'XLSX 文件中没有可读取的工作表' }
+
+    const columnCount = Math.max(worksheet.columnCount, 4)
+    const rows = []
+    worksheet.eachRow({ includeEmpty: false }, (row) => {
+      const values = []
+      for (let column = 1; column <= columnCount; column += 1) {
+        values.push(excelCellValue(row.getCell(column)))
+      }
+      if (values.some((value) => String(value).trim() !== '')) rows.push(values)
+    })
+    return { rows }
+  } catch {
+    return { error: 'XLSX 文件无法解析，请使用最新模板重新填写' }
+  }
+}
+
+function emptyLevelCounts() {
+  return { A: 0, B: 0, C: 0 }
+}
+
+function addLevelCounts(target, source) {
+  ;['A', 'B', 'C'].forEach((level) => {
+    target[level] += Number(source?.[level]) || 0
+  })
+  return target
+}
+
+function analyzeTaskImportRows(sourceRows, fileName, seed) {
+  if (!Array.isArray(sourceRows) || sourceRows.length < 2) {
+    return { error: '名单中没有可导入的数据' }
+  }
+
+  const header = sourceRows[0].map((value) => String(value || '').trim())
+  const nameIndex = header.findIndex((value) => ['姓名', '医生姓名'].includes(value))
+  const phoneIndex = header.indexOf('手机号')
+  const pointsIndex = header.findIndex((value) => ['任务积分', '目标积分'].includes(value))
+  const dateIndex = header.findIndex((value) => ['创建日期', '导入日期', '日期'].includes(value))
+
+  if ([nameIndex, phoneIndex, pointsIndex, dateIndex].some((index) => index < 0)) {
+    return { error: '模板字段不完整，必须包含医生姓名、手机号、任务积分和创建日期' }
+  }
+
+  const phoneDateRows = new Map()
+  const phoneNames = new Map()
+  const phoneFirstRow = new Map()
+  sourceRows.slice(1).forEach((values, index) => {
+    const phone = String(values[phoneIndex] || '').trim()
+    if (!phone) return
+    const rowNo = index + 2
+    if (!phoneFirstRow.has(phone)) phoneFirstRow.set(phone, rowNo)
+
+    const name = String(values[nameIndex] || '').trim()
+    if (name) {
+      const names = phoneNames.get(phone) || new Set()
+      names.add(name)
+      phoneNames.set(phone, names)
+    }
+
+    const createDate = normalizeImportDate(values[dateIndex])
+    if (!createDate) return
+    const key = `${phone}|${createDate}`
+    const rowNumbers = phoneDateRows.get(key) || []
+    rowNumbers.push(rowNo)
+    phoneDateRows.set(key, rowNumbers)
+  })
+
+  const simulatedQuestions = questionBankRows.map((row) => ({
+    ...row,
+    assigned_doctor_ids: [...(row.assigned_doctor_ids || [])]
+  }))
+  const rows = sourceRows.slice(1).map((values, index) => {
+    const rowNo = index + 2
+    const doctorName = String(values[nameIndex] || '').trim()
+    const doctorPhone = String(values[phoneIndex] || '').trim()
+    const pointsText = String(values[pointsIndex] || '').trim()
+    const targetPoints = Number(pointsText)
+    const createDateText = String(values[dateIndex] || '').trim()
+    const createDate = normalizeImportDate(values[dateIndex])
+    const errors = []
+
+    if (!doctorName) errors.push('医生姓名不能为空')
+    else if (doctorName.length > 30) errors.push('医生姓名不能超过 30 个字符')
+    if (!/^1[3-9]\d{9}$/.test(doctorPhone)) errors.push('手机号须为 11 位有效号码')
+
+    const pointsValidation = validateTargetPoints(targetPoints)
+    if (!/^\d+$/.test(pointsText) || pointsValidation.error) {
+      errors.push(pointsValidation.error || '任务积分须为正整数')
+    }
+
+    if (!createDateText) errors.push('创建日期不能为空')
+    else if (!createDate) errors.push('创建日期须为有效日期，例如 2026-08-05')
+
+    if (
+      doctorPhone &&
+      createDate &&
+      (phoneDateRows.get(`${doctorPhone}|${createDate}`)?.length || 0) > 1
+    ) {
+      errors.push('该医生同一创建日期在名单中重复')
+    }
+    if (doctorPhone && (phoneNames.get(doctorPhone)?.size || 0) > 1) {
+      errors.push('同一手机号在名单中的姓名不一致')
+    }
+    if (createDate && findImportedTask(doctorPhone, createDate)) {
+      errors.push(`该医生在 ${createDate} 已导入过任务，请勿重复导入`)
+    }
+
+    const doctor = doctors.find((item) => item.phone === doctorPhone)
+    if (doctor && doctor.name !== doctorName) errors.push(`手机号已绑定医生“${doctor.name}”`)
+    if (doctor?.account_status === 'disabled') errors.push('医生账号已禁用，不能分配新任务')
+    const eligibilityError = doctor ? doctorReviewEligibilityError(doctor) : ''
+    if (eligibilityError) errors.push(eligibilityError)
+
+    const accountAction =
+      doctor || phoneFirstRow.get(doctorPhone) !== rowNo ? 'reuse' : 'create'
+    let plan = null
+    if (errors.length === 0) {
+      const allocationDoctor =
+        doctor || { id: `IMPORT:${doctorPhone}`, max_review_level: 'C' }
+      plan = planTaskQuestions(
+        simulatedQuestions,
+        targetPoints,
+        allocationDoctor,
+        `${seed}|${fileName}|${rowNo}|${doctorPhone}`
+      )
+      if (!plan.success) {
+        errors.push(plan.reason)
+      } else {
+        recordQuestionAllocation(simulatedQuestions, plan.rows, allocationDoctor.id)
+      }
+    }
+
+    const valid = errors.length === 0
+    return {
+      row_no: rowNo,
+      doctor_name: doctorName,
+      doctor_phone: doctorPhone,
+      target_points: Number.isFinite(targetPoints) ? targetPoints : 0,
+      create_date: createDate || createDateText,
+      import_date: createDate || createDateText,
+      matched_item_count: valid ? plan.matched_item_count : 0,
+      item_count: valid ? plan.matched_item_count : 0,
+      level_summary: valid ? { ...plan.level_summary } : emptyLevelCounts(),
+      total_reward_cent: valid ? plan.total_reward_cent : 0,
+      question_ids: valid ? plan.rows.map((question) => question.id) : [],
+      account_action: accountAction,
+      validation_status: valid ? 'valid' : 'invalid',
+      validation_message: valid
+        ? accountAction === 'reuse'
+          ? '校验通过，将复用已有账号'
+          : '校验通过，将创建已通过培训考试的医生账号'
+        : errors.join('；')
+    }
+  })
+
+  const validRows = rows.filter((row) => row.validation_status === 'valid')
+  const levelSummary = validRows.reduce(
+    (summary, row) => addLevelCounts(summary, row.level_summary),
+    emptyLevelCounts()
+  )
+  const matchedItemCount = validRows.reduce(
+    (total, row) => total + row.matched_item_count,
+    0
+  )
+  const totalTargetPoints = validRows.reduce(
+    (total, row) => total + row.target_points,
+    0
+  )
+
+  return {
+    rows,
+    summary: {
+      total_rows: rows.length,
+      valid_rows: validRows.length,
+      error_rows: rows.length - validRows.length,
+      new_account_count: validRows.filter((row) => row.account_action === 'create').length,
+      reused_account_count: validRows.filter((row) => row.account_action === 'reuse').length,
+      task_count: validRows.length,
+      total_target_points: totalTargetPoints,
+      matched_item_count: matchedItemCount,
+      total_item_count: matchedItemCount,
+      total_reward_cent: totalTargetPoints * 100,
+      level_summary: levelSummary
+    }
+  }
 }
 
 function taskImportDate(task) {
@@ -1256,6 +1846,9 @@ app.post('/core/product/doctor/save', (req, res) => {
     gender,
     account_status: 'pending_activation',
     certification_status: 'unsubmitted',
+    training_exam_status: 'passed',
+    max_review_level: 'C',
+    review_qualification_source: 'admin_manual_roster',
     account_source: 'manual',
     create_time: formatDateTime(),
     activation_time: null,
@@ -1538,7 +2131,7 @@ app.get('/core/product/review/index', (req, res) => {
   }
 
   if (issueType && !reviewIssueTypes.includes(issueType)) {
-    res.json(failure(422, '问题类型筛选值无效'))
+    res.json(failure(422, '不通过类型筛选值无效'))
     return
   }
 
@@ -1560,14 +2153,19 @@ app.get('/core/product/review/index', (req, res) => {
 
       return [
         review.review_no,
+        review.question_no,
         review.task_no,
         review.doctor_name,
         review.doctor_phone,
         review.hospital,
         review.department,
         review.drug_name,
+        review.drug_specification,
+        review.drug_manufacturer,
         review.drug_type,
         review.disease_type,
+        review.question_department,
+        review.type_name,
         review.question
       ].some((value) => String(value || '').toLowerCase().includes(keyword))
     })
@@ -1931,6 +2529,326 @@ app.post('/core/product/withdrawal/export', (req, res) => {
   res.send(`\uFEFF${csv}`)
 })
 
+function normalizeQuestionPayload(payload = {}, currentItem = null) {
+  const typeCode = String(payload.type_code || '').trim()
+  const questionType = questionBankFixture.question_types.find(
+    (item) => String(item.code || item.type_code) === typeCode
+  )
+  if (!questionType) return { error: '请选择有效的问题类型' }
+
+  const selectedDrug = resolveDrugSelection(drugCatalogRows, payload)
+  if (selectedDrug.error) return selectedDrug
+
+  const selectedDepartment = resolveDepartmentSelection(
+    buildDepartmentOptions(doctorConfigRows),
+    payload.department,
+    currentItem?.department
+  )
+  if (selectedDepartment.error) return selectedDepartment
+
+  const textFields = { disease_type: 100 }
+  const normalized = {}
+  for (const [field, maxLength] of Object.entries(textFields)) {
+    normalized[field] = String(payload[field] || '').trim()
+    if (normalized[field].length > maxLength) {
+      return { error: `${field} 不能超过 ${maxLength} 个字符` }
+    }
+  }
+
+  const question = String(payload.question || '').trim()
+  if (!question) return { error: '请输入审核问题' }
+  if (question.length > 2000) return { error: '审核问题不能超过 2000 个字符' }
+
+  const sourceAnswer =
+    payload.answer && typeof payload.answer === 'object'
+      ? payload.answer
+      : { suggestion: String(payload.answer || '') }
+  const answer = {
+    suggestion: String(sourceAnswer.suggestion || '').trim(),
+    dosage: String(sourceAnswer.dosage || '').trim(),
+    precautions: (Array.isArray(sourceAnswer.precautions)
+      ? sourceAnswer.precautions
+      : sourceAnswer.precautions
+        ? [sourceAnswer.precautions]
+        : []
+    )
+      .map((item) => String(item || '').trim())
+      .filter(Boolean),
+    interaction: String(sourceAnswer.interaction || '').trim(),
+    warning: String(sourceAnswer.warning || '').trim()
+  }
+  if (!answer.suggestion) return { error: '请输入 AI 回答中的用药建议' }
+  if (answer.suggestion.length > 3000) return { error: '用药建议不能超过 3000 个字符' }
+  if (
+    answer.dosage.length > 2000 ||
+    answer.interaction.length > 2000 ||
+    answer.warning.length > 2000 ||
+    answer.precautions.some((item) => item.length > 500)
+  ) {
+    return { error: 'AI 回答字段超过允许长度' }
+  }
+
+  const sourceReference = String(payload.source_reference || '').trim()
+  if (!sourceReference) return { error: '请填写题目的说明书、指南或文献依据' }
+  if (sourceReference.length > 2000) return { error: '来源依据不能超过 2000 个字符' }
+  if (payload.is_deidentified !== true) {
+    return { error: '题目必须完成去标识化确认后才能保存' }
+  }
+
+  const submittedRiskTags = Array.isArray(payload.risk_tags)
+    ? payload.risk_tags.map((item) => String(item).trim()).filter(Boolean)
+    : []
+  const unknownRiskTag = submittedRiskTags.find(
+    (tag) => !Object.hasOwn(questionBankFixture.risk_tag_labels || {}, tag)
+  )
+  if (unknownRiskTag) return { error: '请选择有效的风险标签' }
+  const defaultRiskTags = Array.isArray(questionType.default_risk_tags)
+    ? questionType.default_risk_tags.map(String)
+    : []
+  const riskTags = [...new Set([...defaultRiskTags, ...submittedRiskTags])]
+  const baseLevel = String(questionType.base_level || 'A').toUpperCase()
+  const riskResult = evaluateRiskDetails(
+    baseLevel,
+    riskTags,
+    questionBankFixture.risk_rules
+  )
+
+  return {
+    data: {
+      type_code: typeCode,
+      type_name: questionType.name || questionType.type_name,
+      ...selectedDrug.data,
+      ...normalized,
+      department: selectedDepartment.data,
+      question,
+      answer,
+      risk_tags: riskTags,
+      base_level: baseLevel,
+      final_level: riskResult.final_level,
+      upgrade_reasons: riskResult.upgrade_reasons,
+      unit_reward_cent: Number(questionBankFixture.pricing[riskResult.final_level]),
+      source_reference: sourceReference,
+      is_deidentified: true
+    }
+  }
+}
+
+function serializeQuestionBankItem(item) {
+  const publicItem = { ...item }
+  delete publicItem.assigned_doctor_ids
+  delete publicItem.assignment_count
+  publicItem.risk_tag_names = resolveRiskTagNames(
+    item.risk_tags,
+    questionBankFixture.risk_tag_labels
+  )
+  publicItem.audit_log = (Array.isArray(item.audit_log) ? item.audit_log : []).map(
+    (record) => ({
+      ...record,
+      action_label: resolveQuestionAuditActionLabel(record)
+    })
+  )
+  return publicItem
+}
+
+app.get('/core/product/question-bank/standards', (req, res) => {
+  res.json(
+    success({
+      pricing: questionBankFixture.pricing,
+      risk_rules: questionBankFixture.risk_rules,
+      risk_tag_labels: questionBankFixture.risk_tag_labels,
+      question_types: questionBankFixture.question_types,
+      department_options: buildDepartmentOptions(doctorConfigRows),
+      summary: summarizeQuestionBank(questionBankRows)
+    })
+  )
+})
+
+app.get('/core/product/question-bank/drugOptions', (req, res) => {
+  const keyword = String(req.query.keyword || '').trim().toLowerCase()
+  const rows = drugCatalogRows.filter((item) => {
+    if (!keyword) return true
+    return [
+      item.drug_id,
+      item.drug_name,
+      item.drug_specification,
+      item.drug_type,
+      item.drug_manufacturer
+    ].some((value) => String(value || '').toLowerCase().includes(keyword))
+  })
+
+  res.json(success(rows))
+})
+
+app.get('/core/product/question-bank/index', (req, res) => {
+  const keyword = String(req.query.keyword || '').trim().toLowerCase()
+  const drugId = String(req.query.drug_id || '').trim()
+  const department = String(req.query.department || '').trim()
+  const typeCode = String(req.query.type_code || '').trim()
+  const finalLevel = String(req.query.final_level || '').trim().toUpperCase()
+  const lifecycleStatus = String(req.query.lifecycle_status || '').trim()
+
+  if (finalLevel && !['A', 'B', 'C'].includes(finalLevel)) {
+    res.json(failure(422, '题目等级筛选值无效'))
+    return
+  }
+  if (lifecycleStatus && !questionLifecycleStatuses.includes(lifecycleStatus)) {
+    res.json(failure(422, '题库状态筛选值无效'))
+    return
+  }
+  const selectedDepartment = resolveDepartmentSelection(
+    buildDepartmentOptions(doctorConfigRows),
+    department
+  )
+  if (selectedDepartment.error) {
+    res.json(failure(422, selectedDepartment.error))
+    return
+  }
+  const rows = questionBankRows
+    .filter((item) => {
+      if (drugId && item.drug_id !== drugId) return false
+      if (department && item.department !== selectedDepartment.data) return false
+      if (typeCode && item.type_code !== typeCode) return false
+      if (finalLevel && item.final_level !== finalLevel) return false
+      if (lifecycleStatus && item.lifecycle_status !== lifecycleStatus) return false
+      if (!keyword) return true
+      return [
+        item.question_no,
+        item.drug_id,
+        item.drug_specification,
+        item.question,
+        item.type_name,
+        item.drug_name,
+        item.drug_type,
+        item.drug_manufacturer,
+        item.disease_type,
+        item.department
+      ]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword))
+    })
+    .sort((left, right) => right.id - left.id)
+
+  res.json(success(paginate(rows.map(serializeQuestionBankItem), req.query)))
+})
+
+app.get('/core/product/question-bank/read', (req, res) => {
+  const id = Number(req.query.id)
+  if (!Number.isInteger(id) || id <= 0) {
+    res.json(failure(422, '请提供有效的题目 ID'))
+    return
+  }
+  const item = questionBankRows.find((row) => row.id === id)
+  if (!item) {
+    res.json(failure(404, '未找到对应题目'))
+    return
+  }
+  res.json(success(serializeQuestionBankItem(item)))
+})
+
+app.post('/core/product/question-bank/save', (req, res) => {
+  const normalized = normalizeQuestionPayload(req.body)
+  if (normalized.error) {
+    res.json(failure(422, normalized.error))
+    return
+  }
+
+  const now = formatDateTime()
+  const item = {
+    id: nextQuestionId,
+    question_no: `QB-${normalized.data.type_code}-${String(nextQuestionId).padStart(4, '0')}`,
+    ...normalized.data,
+    lifecycle_status: 'draft',
+    assignment_count: 0,
+    assigned_doctor_ids: [],
+    audit_log: [
+      {
+        action: 'created',
+        action_label: '创建题目草稿',
+        operator: '运营管理员',
+        create_time: now
+      }
+    ],
+    create_time: now,
+    update_time: now
+  }
+  nextQuestionId += 1
+  questionBankRows.push(item)
+  res.json(success(serializeQuestionBankItem(item), '题目已新增，确认后可设为可分配'))
+})
+
+app.put('/core/product/question-bank/update', (req, res) => {
+  const id = Number(req.query.id)
+  if (!Number.isInteger(id) || id <= 0) {
+    res.json(failure(422, '请提供有效的题目 ID'))
+    return
+  }
+  const item = questionBankRows.find((row) => row.id === id)
+  if (!item) {
+    res.json(failure(404, '未找到对应题目'))
+    return
+  }
+  const normalized = normalizeQuestionPayload(req.body, item)
+  if (normalized.error) {
+    res.json(failure(422, normalized.error))
+    return
+  }
+  const now = formatDateTime()
+  Object.assign(item, normalized.data, {
+    update_time: now,
+    audit_log: [
+      ...(Array.isArray(item.audit_log) ? item.audit_log : []),
+      {
+        action: 'updated',
+        action_label: '更新题目内容',
+        operator: '运营管理员',
+        create_time: now
+      }
+    ]
+  })
+  res.json(success(serializeQuestionBankItem(item), '题目已保存'))
+})
+
+app.post('/core/product/question-bank/changeStatus', (req, res) => {
+  const id = Number(req.body?.id)
+  const status = String(req.body?.status || req.body?.lifecycle_status || '').trim()
+  if (!Number.isInteger(id) || id <= 0) {
+    res.json(failure(422, '请提供有效的题目 ID'))
+    return
+  }
+  if (!['available', 'disabled'].includes(status)) {
+    res.json(failure(422, '题库状态值无效'))
+    return
+  }
+  const item = questionBankRows.find((row) => row.id === id)
+  if (!item) {
+    res.json(failure(404, '未找到对应题目'))
+    return
+  }
+  if (status === 'available' && item.is_deidentified !== true) {
+    res.json(failure(422, '未完成去标识化确认，不能设为可分配'))
+    return
+  }
+
+  const now = formatDateTime()
+  item.lifecycle_status = status
+  item.update_time = now
+  item.audit_log = [
+    ...(Array.isArray(item.audit_log) ? item.audit_log : []),
+    {
+      action: status === 'available' ? 'enabled' : 'disabled',
+      action_label: status === 'available' ? '设为可分配' : '停用题目',
+      operator: '运营管理员',
+      create_time: now
+    }
+  ]
+  res.json(
+    success(
+      serializeQuestionBankItem(item),
+      status === 'available' ? '题目已设为可分配' : '题目已停用'
+    )
+  )
+})
+
 app.get('/core/product/task/index', (req, res) => {
   const keyword = String(req.query.keyword || '').trim().toLowerCase()
   const status = req.query.status === 'all' ? '' : String(req.query.status || '').trim()
@@ -1987,7 +2905,7 @@ app.get('/core/product/task/read', (req, res) => {
     return
   }
 
-  res.json(success(hydrateTask(task)))
+  res.json(success(hydrateTask(task, { includeItems: true })))
 })
 
 app.get('/core/product/task/doctorOptions', (req, res) => {
@@ -1999,7 +2917,9 @@ app.get('/core/product/task/doctorOptions', (req, res) => {
       hospital: doctor.hospital,
       department: doctor.department,
       title: doctor.title,
-      account_status: doctor.account_status
+      account_status: doctor.account_status,
+      training_exam_status: doctor.training_exam_status,
+      max_review_level: doctor.max_review_level
     }))
     .sort((left, right) => left.id - right.id)
 
@@ -2008,15 +2928,16 @@ app.get('/core/product/task/doctorOptions', (req, res) => {
 
 app.post('/core/product/task/save', (req, res) => {
   const doctorId = Number(req.body?.doctor_id)
-  const itemCount = Number(req.body?.item_count)
+  const targetPoints = Number(req.body?.target_points)
 
   if (!Number.isInteger(doctorId) || doctorId <= 0) {
     res.json(failure(422, '请选择要分配任务的医生'))
     return
   }
 
-  if (!Number.isInteger(itemCount) || itemCount < 1 || itemCount > 1000) {
-    res.json(failure(422, '任务数量须为 1 至 1000 的整数'))
+  const pointsValidation = validateTargetPoints(targetPoints)
+  if (pointsValidation.error) {
+    res.json(failure(422, pointsValidation.error))
     return
   }
 
@@ -2032,201 +2953,73 @@ app.post('/core/product/task/save', (req, res) => {
     return
   }
 
-  const task = createTask(doctor, itemCount, 'manual')
+  const eligibilityError = doctorReviewEligibilityError(doctor)
+  if (eligibilityError) {
+    res.json(failure(422, eligibilityError))
+    return
+  }
+
+  const plan = planTaskQuestions(
+    questionBankRows,
+    targetPoints,
+    doctor,
+    `manual|${doctor.id}|${Date.now()}`
+  )
+  if (!plan.success) {
+    res.json(failure(422, plan.reason))
+    return
+  }
+
+  const task = createTask(doctor, plan, 'manual')
   tasks.push(task)
-  updateWorkbench(itemCount, 0)
+  updateWorkbench(task.item_count, 0)
   res.json(success(hydrateTask(task), '任务已创建'))
 })
 
-app.post('/core/product/task/importPreview', (req, res) => {
-  const fileName = String(req.body?.file_name || '').trim()
-  const fileSize = Number(req.body?.file_size)
-  const fileContent = String(req.body?.file_content || '')
-
-  if (!fileName) {
-    res.json(failure(422, '请选择要导入的名单文件'))
-    return
-  }
-
-  if (!/\.csv$/i.test(fileName)) {
-    res.json(failure(422, 'V1.0 名单导入仅支持 CSV 文件，请下载模板后填写'))
-    return
-  }
-
-  if (!Number.isFinite(fileSize) || fileSize <= 0 || !fileContent.trim()) {
-    res.json(failure(422, '无法读取文件大小，请重新选择文件'))
-    return
-  }
-
-  if (
-    fileSize > 10 * 1024 * 1024 ||
-    Buffer.byteLength(fileContent, 'utf8') > 10 * 1024 * 1024
-  ) {
-    res.json(failure(422, '名单文件不能超过 10 MB'))
-    return
-  }
-
-  let csvRows
+app.post('/core/product/task/importPreview', async (req, res) => {
   try {
-    csvRows = parseCsv(fileContent)
-  } catch {
-    res.json(failure(422, 'CSV 文件格式不正确，请检查引号和换行后重试'))
-    return
-  }
-
-  if (csvRows.length < 2) {
-    res.json(failure(422, '名单中没有可导入的数据'))
-    return
-  }
-
-  const header = csvRows[0]
-  const nameIndex = header.findIndex((value) => ['姓名', '医生姓名'].includes(value))
-  const phoneIndex = header.indexOf('手机号')
-  const countIndex = header.findIndex((value) => ['任务数量', '任务数'].includes(value))
-  const dateIndex = header.findIndex((value) => ['导入日期', '日期'].includes(value))
-
-  if ([nameIndex, phoneIndex, countIndex, dateIndex].some((index) => index < 0)) {
-    res.json(
-      failure(422, '模板字段不完整，必须包含姓名、手机号、任务数量和导入日期')
-    )
-    return
-  }
-
-  const phoneDateRows = new Map()
-  const phoneNames = new Map()
-  const phoneFirstRow = new Map()
-  csvRows.slice(1).forEach((values, index) => {
-    const phone = String(values[phoneIndex] || '').trim()
-    if (!phone) return
-
-    const rowNo = index + 2
-    if (!phoneFirstRow.has(phone)) {
-      phoneFirstRow.set(phone, rowNo)
+    const fileName = String(req.body?.file_name || '').trim()
+    const parsed = await readTaskImportRows(req.body)
+    if (parsed.error) {
+      res.json(failure(422, parsed.error))
+      return
     }
 
-    const name = String(values[nameIndex] || '').trim()
-    if (name) {
-      const names = phoneNames.get(phone) || new Set()
-      names.add(name)
-      phoneNames.set(phone, names)
+    const previewToken = `PV${Date.now()}${String(
+      Math.floor(Math.random() * 1000)
+    ).padStart(3, '0')}`
+    const seed = `${previewToken}|${fileName}`
+    const analysis = analyzeTaskImportRows(parsed.rows, fileName, seed)
+    if (analysis.error) {
+      res.json(failure(422, analysis.error))
+      return
     }
 
-    const importDate = normalizeImportDate(values[dateIndex])
-    if (!importDate) return
-    const key = `${phone}|${importDate}`
-    const rowNumbers = phoneDateRows.get(key) || []
-    rowNumbers.push(rowNo)
-    phoneDateRows.set(key, rowNumbers)
-  })
-
-  const rows = csvRows.slice(1).map((values, index) => {
-    const rowNo = index + 2
-    const doctorName = String(values[nameIndex] || '').trim()
-    const doctorPhone = String(values[phoneIndex] || '').trim()
-    const itemCountText = String(values[countIndex] || '').trim()
-    const itemCount = Number(itemCountText)
-    const importDateText = String(values[dateIndex] || '').trim()
-    const importDate = normalizeImportDate(importDateText)
-    const errors = []
-
-    if (!doctorName) {
-      errors.push('医生姓名不能为空')
-    } else if (doctorName.length > 20) {
-      errors.push('医生姓名不能超过 20 个字符')
-    }
-
-    if (!/^1\d{10}$/.test(doctorPhone)) {
-      errors.push('手机号须为 11 位数字')
-    }
-
-    if (!/^\d+$/.test(itemCountText) || !Number.isInteger(itemCount) || itemCount < 1) {
-      errors.push('任务数量须为大于 0 的整数')
-    } else if (itemCount > 1000) {
-      errors.push('单个医生任务数量不能超过 1000')
-    }
-
-    if (!importDateText) {
-      errors.push('导入日期不能为空')
-    } else if (!importDate) {
-      errors.push('导入日期格式须为 2026-07-26 这样的有效日期')
-    }
-
-    if (
-      doctorPhone &&
-      importDate &&
-      (phoneDateRows.get(`${doctorPhone}|${importDate}`)?.length || 0) > 1
-    ) {
-      errors.push('该医生同一导入日期在名单中重复')
-    }
-
-    if (doctorPhone && (phoneNames.get(doctorPhone)?.size || 0) > 1) {
-      errors.push('同一手机号在名单中的姓名不一致')
-    }
-
-    if (importDate && findImportedTask(doctorPhone, importDate)) {
-      errors.push(`该医生在 ${importDate} 已导入过任务，请勿重复导入`)
-    }
-
-    const doctor = doctors.find((item) => item.phone === doctorPhone)
-    if (doctor && doctor.name !== doctorName) {
-      errors.push(`手机号已绑定医生“${doctor.name}”`)
-    }
-    if (doctor?.account_status === 'disabled') {
-      errors.push('医生账号已禁用，不能分配新任务')
-    }
-
-    const valid = errors.length === 0
-    const accountAction =
-      doctor || phoneFirstRow.get(doctorPhone) !== rowNo ? 'reuse' : 'create'
-
-    return {
-      row_no: rowNo,
-      doctor_name: doctorName,
-      doctor_phone: doctorPhone,
-      item_count: Number.isFinite(itemCount) ? itemCount : 0,
-      import_date: importDate || importDateText,
-      total_reward_cent: valid ? itemCount * 5000 : 0,
-      account_action: accountAction,
-      validation_status: valid ? 'valid' : 'invalid',
-      validation_message: valid
-        ? accountAction === 'reuse'
-          ? '校验通过，将复用已有账号'
-          : '校验通过，将创建医生账号'
-        : errors.join('；')
-    }
-  })
-
-  const validRows = rows.filter((row) => row.validation_status === 'valid')
-  const previewId = `PV${Date.now()}${String(Math.floor(Math.random() * 1000)).padStart(3, '0')}`
-  const summary = {
-    total_rows: rows.length,
-    valid_rows: validRows.length,
-    error_rows: rows.length - validRows.length,
-    new_account_count: validRows.filter((row) => row.account_action === 'create').length,
-    reused_account_count: validRows.filter((row) => row.account_action === 'reuse').length,
-    task_count: validRows.length,
-    total_item_count: validRows.reduce((total, row) => total + row.item_count, 0),
-    total_reward_cent: validRows.reduce((total, row) => total + row.total_reward_cent, 0)
-  }
-
-  importPreviews.set(previewId, {
-    file_name: fileName,
-    rows,
-    summary
-  })
-
-  res.json(
-    success({
-      preview_id: previewId,
+    importPreviews.set(previewToken, {
       file_name: fileName,
-      summary,
-      rows
+      source_rows: parsed.rows,
+      seed,
+      rows: analysis.rows,
+      summary: analysis.summary
     })
-  )
+
+    res.json(
+      success({
+        preview_token: previewToken,
+        preview_id: previewToken,
+        file_name: fileName,
+        summary: analysis.summary,
+        rows: analysis.rows
+      })
+    )
+  } catch (error) {
+    console.error(error)
+    res.json(failure(500, '名单解析失败，请稍后重试'))
+  }
 })
 
 app.post('/core/product/task/importConfirm', (req, res) => {
-  const previewId = String(req.body?.preview_id || '').trim()
+  const previewId = String(req.body?.preview_token || req.body?.preview_id || '').trim()
 
   if (!previewId) {
     res.json(failure(422, '缺少导入预览标识，请重新上传名单'))
@@ -2245,45 +3038,23 @@ app.post('/core/product/task/importConfirm', (req, res) => {
     return
   }
 
-  const disabledAccount = preview.rows.find((row) => {
-    const doctor = doctors.find((item) => item.phone === row.doctor_phone)
-    return doctor?.account_status === 'disabled'
-  })
-
-  if (disabledAccount) {
-    res.json(
-      failure(
-        422,
-        `手机号 ${disabledAccount.doctor_phone} 对应账号已禁用，无法继续分配任务`
-      )
-    )
-    return
-  }
-
-  const accountConflict = preview.rows.find((row) => {
-    const doctor = doctors.find((item) => item.phone === row.doctor_phone)
-    return doctor && doctor.name !== row.doctor_name
-  })
-
-  if (accountConflict) {
-    res.json(
-      failure(
-        422,
-        `手机号 ${accountConflict.doctor_phone} 的账号信息已变化，请重新校验名单`
-      )
-    )
-    return
-  }
-
-  const duplicateImport = preview.rows.find((row) =>
-    findImportedTask(row.doctor_phone, row.import_date)
+  const currentAnalysis = analyzeTaskImportRows(
+    preview.source_rows,
+    preview.file_name,
+    preview.seed
   )
-
-  if (duplicateImport) {
+  if (currentAnalysis.error) {
+    res.json(failure(422, currentAnalysis.error))
+    return
+  }
+  if (currentAnalysis.summary.error_rows > 0) {
+    const firstInvalid = currentAnalysis.rows.find(
+      (row) => row.validation_status === 'invalid'
+    )
     res.json(
       failure(
         422,
-        `手机号 ${duplicateImport.doctor_phone} 在导入日期 ${duplicateImport.import_date} 已有导入记录，请重新校验名单`
+        `题库库存或账号信息已变化：${firstInvalid?.validation_message || '请重新校验名单'}`
       )
     )
     return
@@ -2295,7 +3066,7 @@ app.post('/core/product/task/importConfirm', (req, res) => {
   const createdTasks = []
   let newDoctorCount = 0
 
-  preview.rows.forEach((row) => {
+  currentAnalysis.rows.forEach((row) => {
     let doctor = doctors.find((item) => item.phone === row.doctor_phone)
 
     if (!doctor) {
@@ -2310,6 +3081,9 @@ app.post('/core/product/task/importConfirm', (req, res) => {
         gender: null,
         account_status: 'pending_activation',
         certification_status: 'unsubmitted',
+        training_exam_status: 'passed',
+        max_review_level: 'C',
+        review_qualification_source: 'admin_import_roster',
         account_source: 'import',
         create_time: createTime,
         activation_time: null,
@@ -2320,7 +3094,17 @@ app.post('/core/product/task/importConfirm', (req, res) => {
       doctors.push(doctor)
     }
 
-    const task = createTask(doctor, row.item_count, 'import', batchNo, row.import_date)
+    const selectedQuestions = row.question_ids.map((questionId) =>
+      questionBankRows.find((question) => question.id === questionId)
+    )
+    const plan = {
+      target_points: row.target_points,
+      total_reward_cent: row.total_reward_cent,
+      rows: selectedQuestions,
+      level_summary: row.level_summary,
+      matched_item_count: row.matched_item_count
+    }
+    const task = createTask(doctor, plan, 'import', batchNo, row.create_date)
     tasks.push(task)
     createdTasks.push(task)
   })
@@ -2337,25 +3121,49 @@ app.post('/core/product/task/importConfirm', (req, res) => {
         reused_account_count: createdTasks.length - newDoctorCount,
         created_task_count: createdTasks.length,
         assigned_item_count: totalItemCount,
-        total_reward_cent: createdTasks.reduce(
-          (total, task) => total + task.total_reward_cent,
-          0
-        )
+        matched_item_count: totalItemCount,
+        total_target_points: currentAnalysis.summary.total_target_points,
+        total_reward_cent: currentAnalysis.summary.total_reward_cent,
+        level_summary: currentAnalysis.summary.level_summary
       },
       '名单导入成功，账号和任务已自动创建'
     )
   )
 })
 
-app.get('/core/product/task/template', (req, res) => {
-  const csv = [
-    '医生姓名,手机号,任务数量,导入日期',
-    '示例医生,13800000000,20,2026-07-26'
-  ].join('\r\n')
-
-  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
-  res.setHeader('Content-Disposition', 'attachment; filename="doctor-task-import-template.csv"')
-  res.send(`\uFEFF${csv}`)
+app.get('/core/product/task/template', async (req, res) => {
+  try {
+    const workbook = new ExcelJS.Workbook()
+    const worksheet = workbook.addWorksheet('名单')
+    worksheet.addRow(['医生姓名', '手机号', '任务积分', '创建日期'])
+    worksheet.addRow(['示例医生', '13800000000', 10000, '2026-08-05'])
+    worksheet.columns = [
+      { width: 16 },
+      { width: 18 },
+      { width: 14 },
+      { width: 16 }
+    ]
+    worksheet.getRow(1).font = { bold: true }
+    worksheet.getRow(1).fill = {
+      type: 'pattern',
+      pattern: 'solid',
+      fgColor: { argb: 'FFE8F3FF' }
+    }
+    worksheet.getColumn(2).numFmt = '@'
+    const buffer = await workbook.xlsx.writeBuffer()
+    res.setHeader(
+      'Content-Type',
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    )
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="doctor-task-import-template.xlsx"'
+    )
+    res.send(Buffer.from(buffer))
+  } catch (error) {
+    console.error(error)
+    res.status(500).json(failure(500, '导入模板生成失败'))
+  }
 })
 
 app.use((req, res) => {

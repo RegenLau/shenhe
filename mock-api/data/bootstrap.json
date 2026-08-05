@@ -29,6 +29,16 @@
         }
       },
       {
+        "name": "productQuestionBank",
+        "path": "/product/question-bank",
+        "component": "product/question-bank/index",
+        "meta": {
+          "title": "审核题库",
+          "icon": "icon-book",
+          "type": "M"
+        }
+      },
+      {
         "name": "productTask",
         "path": "/product/task",
         "component": "product/task/index",
@@ -148,6 +158,40 @@
         "label": "名单导入",
         "value": "import",
         "color": "purple"
+      }
+    ],
+    "question_level": [
+      {
+        "label": "A 级",
+        "value": "A",
+        "color": "blue"
+      },
+      {
+        "label": "B 级",
+        "value": "B",
+        "color": "orange"
+      },
+      {
+        "label": "C 级",
+        "value": "C",
+        "color": "red"
+      }
+    ],
+    "question_lifecycle_status": [
+      {
+        "label": "草稿",
+        "value": "draft",
+        "color": "gray"
+      },
+      {
+        "label": "可分配",
+        "value": "available",
+        "color": "green"
+      },
+      {
+        "label": "已停用",
+        "value": "disabled",
+        "color": "red"
       }
     ],
     "doctor_account_status": [

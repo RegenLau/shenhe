@@ -61,7 +61,10 @@
 
         <section class="detail-section">
           <h3>AI 回答</h3>
-          <div class="answer-list">
+          <div v-if="answerText" class="content-block">
+            {{ answerText }}
+          </div>
+          <div v-else class="answer-list">
             <article class="answer-block">
               <h4>用药建议</h4>
               <p>{{ answer.suggestion || '—' }}</p>
@@ -129,7 +132,14 @@ const errorMessage = ref('')
 const reviewId = ref()
 const detail = ref({})
 
-const answer = computed(() => detail.value.answer || {})
+const answerText = computed(() =>
+  typeof detail.value.answer === 'string' ? detail.value.answer : ''
+)
+const answer = computed(() =>
+  detail.value.answer && typeof detail.value.answer === 'object'
+    ? detail.value.answer
+    : {}
+)
 const precautions = computed(() => {
   if (Array.isArray(answer.value.precautions)) {
     return answer.value.precautions.filter(Boolean)

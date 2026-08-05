@@ -56,34 +56,32 @@
         {{ accountHint.text }}
       </a-alert>
 
-      <a-form-item field="item_count" label="任务数量">
+      <a-form-item field="target_points" label="目标积分">
         <a-input-number
-          v-model="formData.item_count"
-          :min="1"
-          :max="1000"
+          v-model="formData.target_points"
+          :min="100"
+          :step="100"
           :precision="0"
-          placeholder="请输入分配的审核条数"
+          placeholder="请输入要分配的任务积分"
           style="width: 100%"
         >
-          <template #suffix>条</template>
+          <template #suffix>积分</template>
         </a-input-number>
       </a-form-item>
 
       <a-form-item label="任务说明">
-        <span class="readonly-text">按任务数量创建医生审核任务</span>
+        <span class="readonly-text">
+          系统将从题库中随机匹配 100 / 200 / 300 积分题目，精确组成目标积分
+        </span>
       </a-form-item>
 
-      <a-form-item label="单条积分">
-        <span class="readonly-text">50 积分 / 条</span>
-      </a-form-item>
-
-      <a-form-item label="预计总积分">
-        <strong class="total-reward">{{ totalReward }}</strong>
+      <a-form-item label="本次目标">
+        <strong class="total-reward">{{ formattedTargetPoints }}</strong>
       </a-form-item>
     </a-form>
 
     <a-alert type="info" show-icon>
-      任务创建后立即分配给所选医生，待激活医生登录小程序后即可查看。列表中未找到医生时，请先到「医生管理」新增医生账号。
+      提交时会按题库实时库存完成精确匹配；库存不能组成目标积分时不会创建任务。任务创建后立即分配给所选医生。
     </a-alert>
   </a-modal>
 </template>
@@ -105,19 +103,23 @@ const doctorAccounts = ref([])
 
 const initialFormData = {
   doctor_id: undefined,
-  item_count: 10
+  target_points: 10000
 }
 
 const formData = reactive({ ...initialFormData })
 
 const rules = {
   doctor_id: [{ required: true, message: '请选择要分配任务的医生' }],
-  item_count: [
-    { required: true, message: '请输入任务数量' },
+  target_points: [
+    { required: true, message: '请输入目标积分' },
     {
       validator: (value, callback) => {
-        if (!Number.isInteger(value) || value < 1 || value > 1000) {
-          callback('任务数量须为 1 至 1000 的整数')
+        if (
+          !Number.isInteger(value) ||
+          value < 100 ||
+          value % 100 !== 0
+        ) {
+          callback('目标积分须为不小于 100 的整数，且为 100 的整数倍')
           return
         }
         callback()
@@ -129,6 +131,13 @@ const rules = {
 const maskPhone = (value) =>
   String(value || '').replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2') || '—'
 
+const reviewEligibilityError = (doctor) => {
+  if (!doctor) return ''
+  if (doctor.training_exam_status !== 'passed') return '尚未通过审核培训与考试'
+  if (!['A', 'B', 'C'].includes(doctor.max_review_level)) return '审核档位资格未配置'
+  return ''
+}
+
 const doctorOptionLabel = (doctor) => {
   const parts = [doctor.name, maskPhone(doctor.phone)]
   if (doctor.hospital && doctor.hospital !== '待补充') {
@@ -138,14 +147,17 @@ const doctorOptionLabel = (doctor) => {
     parts.push(doctor.department)
   }
   const label = parts.join(' · ')
-  return doctor.account_status === 'disabled' ? `${label}（已禁用）` : label
+  if (doctor.account_status === 'disabled') return `${label}（已禁用）`
+  const eligibilityError = reviewEligibilityError(doctor)
+  return eligibilityError ? `${label}（${eligibilityError}）` : label
 }
 
 const doctorOptions = computed(() =>
   doctorAccounts.value.map((doctor) => ({
     value: doctor.id,
     label: doctorOptionLabel(doctor),
-    disabled: doctor.account_status === 'disabled'
+    disabled:
+      doctor.account_status === 'disabled' || Boolean(reviewEligibilityError(doctor))
   }))
 )
 
@@ -176,6 +188,14 @@ const accountHint = computed(() => {
     }
   }
 
+  const eligibilityError = reviewEligibilityError(selectedDoctor.value)
+  if (eligibilityError) {
+    return {
+      type: 'error',
+      text: `“${selectedDoctor.value.name}”${eligibilityError}，无法分配审核任务。`
+    }
+  }
+
   if (selectedDoctor.value.account_status === 'active') {
     return {
       type: 'success',
@@ -191,9 +211,9 @@ const accountHint = computed(() => {
   }
 })
 
-const totalReward = computed(() => {
-  return `${Number(formData.item_count || 0) * 50} 积分`
-})
+const formattedTargetPoints = computed(
+  () => `${Number(formData.target_points || 0).toLocaleString('zh-CN')} 积分`
+)
 
 const loadDoctorAccounts = async () => {
   if (optionsLoading.value) return
@@ -236,15 +256,27 @@ const submit = async (done) => {
     return
   }
 
+  const eligibilityError = reviewEligibilityError(selectedDoctor.value)
+  if (eligibilityError) {
+    Message.error(eligibilityError)
+    done(false)
+    return
+  }
+
   loading.value = true
   try {
     const response = await taskApi.save({
       doctor_id: formData.doctor_id,
-      item_count: formData.item_count
+      target_points: formData.target_points
     })
 
     if (response.code === 200) {
-      Message.success('任务已创建并分配给所选医生')
+      const matchedCount = Number(response.data?.item_count || 0)
+      Message.success(
+        matchedCount
+          ? `任务已创建，系统已匹配 ${matchedCount} 道题目`
+          : '任务已创建并分配给所选医生'
+      )
       emit('success')
       done(true)
       return

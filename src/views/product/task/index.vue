@@ -8,7 +8,7 @@
     </header>
 
     <a-alert type="info" show-icon class="assignment-tip">
-      名单导入是批量分配任务的一种方式。导入后，系统会按手机号创建或匹配医生账号，并立即生成对应任务。
+      创建或导入任务后，系统会根据目标积分从题库随机精确匹配 100 / 200 / 300 积分题目，不预设等级比例。
     </a-alert>
 
     <a-alert v-if="tableError" type="error" show-icon class="table-error">
@@ -185,7 +185,7 @@ const columns = reactive([
     align: 'center'
   },
   { title: '完成进度', dataIndex: 'progress', width: 160 },
-  { title: '任务数量', dataIndex: 'item_count', width: 90, align: 'right' },
+  { title: '任务题数', dataIndex: 'item_count', width: 90, align: 'right' },
   { title: '任务积分', dataIndex: 'total_reward_cent', width: 110, align: 'right' },
   {
     title: '创建方式',

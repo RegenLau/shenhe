@@ -1,0 +1,723 @@
+{
+  "pricing": {
+    "A": 10000,
+    "B": 20000,
+    "C": 30000
+  },
+  "risk_tag_labels": {
+    "acute_triage": "急症分诊",
+    "administration_operation": "给药操作",
+    "administration_time": "服药时间",
+    "anticoagulant": "抗凝药物",
+    "antiepileptic": "抗癫痫药物",
+    "brand_substitution": "品牌替换",
+    "caution_contraindication": "慎用与禁忌",
+    "comorbidity": "合并疾病",
+    "concentration_conversion": "浓度换算",
+    "department_mapping": "科室归属",
+    "dialysis": "透析患者",
+    "dosage": "用法用量",
+    "dose_calculation": "剂量换算",
+    "dose_decrease": "减量用药",
+    "dose_increase": "加量用药",
+    "drug_attribute": "药品属性",
+    "drug_recommendation": "药品推荐",
+    "drug_substitution": "药品替换",
+    "duplicate_ingredient": "重复成分",
+    "ear_drop": "滴耳剂操作",
+    "eye_drop": "滴眼剂操作",
+    "fact_check": "事实核对",
+    "food_interaction": "饮食相互作用",
+    "general_adverse_reaction": "一般不良反应",
+    "general_overdose": "一般用药过量",
+    "geriatric": "老年人用药",
+    "hepatic_renal_impairment": "肝肾功能异常",
+    "high_alert_medication": "高警示药品",
+    "high_risk_contraindication": "高风险禁忌",
+    "hospital_preparation": "医院制剂",
+    "immunosuppression": "免疫抑制",
+    "indication": "适应症",
+    "inhaler": "吸入装置",
+    "injection": "注射剂",
+    "insufficient_information": "信息不足",
+    "insulin": "胰岛素用药",
+    "lactation": "哺乳期用药",
+    "lifestyle": "生活方式",
+    "medical_triage": "就医分诊",
+    "missed_dose": "漏服处理",
+    "monitoring": "检查监测",
+    "multi_topic": "多主题咨询",
+    "off_label_use": "超说明书用药",
+    "oncology": "肿瘤用药",
+    "onset_time": "起效时间",
+    "package_specification": "包装与规格",
+    "patch": "贴剂操作",
+    "patient_suitability": "患者适用性",
+    "pediatric": "儿童用药",
+    "pediatric_exact_dose": "儿童精确剂量",
+    "precaution": "注意事项",
+    "preconception": "备孕期用药",
+    "pregnancy": "妊娠期用药",
+    "prescription_label_conflict": "医嘱与说明书冲突",
+    "prescription_order": "处方医嘱",
+    "psychiatric_medication": "精神类药物",
+    "rare_disease": "罕见病用药",
+    "serious_adverse_reaction": "严重不良反应",
+    "serious_drug_interaction": "严重药物相互作用",
+    "severe_allergy": "严重过敏",
+    "severe_hepatic_renal_impairment": "严重肝肾功能不全",
+    "severe_overdose": "严重用药过量",
+    "stop_medication": "停药决策",
+    "stop_medication_judgment": "停药判断",
+    "storage": "储藏要求",
+    "tablet_splitting": "药片分割",
+    "transplant": "器官移植",
+    "treatment_course": "治疗疗程"
+  },
+  "drug_templates": [
+    {
+      "name": "阿托伐他汀钙片",
+      "drug_type": "调脂药",
+      "default_department": "心内科",
+      "specifications": [
+        "5mg×7片",
+        "5mg×14片",
+        "10mg×7片",
+        "10mg×14片",
+        "10mg×28片",
+        "20mg×7片",
+        "20mg×14片",
+        "20mg×28片",
+        "40mg×7片",
+        "40mg×14片"
+      ]
+    },
+    {
+      "name": "盐酸二甲双胍片",
+      "drug_type": "降糖药",
+      "default_department": "内分泌科",
+      "specifications": [
+        "0.25g×20片",
+        "0.25g×48片",
+        "0.25g×60片",
+        "0.5g×20片",
+        "0.5g×30片",
+        "0.5g×60片",
+        "0.85g×20片",
+        "0.85g×30片",
+        "1g×15片",
+        "1g×30片"
+      ]
+    },
+    {
+      "name": "苯磺酸氨氯地平片",
+      "drug_type": "降压药",
+      "default_department": "心内科",
+      "specifications": [
+        "2.5mg×7片",
+        "2.5mg×14片",
+        "2.5mg×28片",
+        "5mg×7片",
+        "5mg×14片",
+        "5mg×28片",
+        "5mg×30片",
+        "10mg×7片",
+        "10mg×14片",
+        "10mg×28片"
+      ]
+    },
+    {
+      "name": "奥美拉唑肠溶胶囊",
+      "drug_type": "抑酸药",
+      "default_department": "消化内科",
+      "specifications": [
+        "10mg×7粒",
+        "10mg×14粒",
+        "10mg×28粒",
+        "20mg×7粒",
+        "20mg×14粒",
+        "20mg×21粒",
+        "20mg×28粒",
+        "20mg×30粒",
+        "40mg×7粒",
+        "40mg×14粒"
+      ]
+    },
+    {
+      "name": "盐酸西替利嗪片",
+      "drug_type": "抗过敏药",
+      "default_department": "呼吸内科",
+      "specifications": [
+        "5mg×7片",
+        "5mg×14片",
+        "5mg×28片",
+        "10mg×5片",
+        "10mg×6片",
+        "10mg×7片",
+        "10mg×10片",
+        "10mg×14片",
+        "10mg×20片",
+        "10mg×28片"
+      ]
+    },
+    {
+      "name": "布洛芬缓释胶囊",
+      "drug_type": "解热镇痛药",
+      "default_department": "神经内科",
+      "specifications": [
+        "0.2g×10粒",
+        "0.2g×20粒",
+        "0.2g×30粒",
+        "0.3g×6粒",
+        "0.3g×10粒",
+        "0.3g×12粒",
+        "0.3g×20粒",
+        "0.3g×24粒",
+        "0.4g×10粒",
+        "0.4g×20粒"
+      ]
+    },
+    {
+      "name": "阿莫西林胶囊",
+      "drug_type": "抗菌药",
+      "default_department": "呼吸内科",
+      "specifications": [
+        "0.125g×12粒",
+        "0.125g×24粒",
+        "0.125g×50粒",
+        "0.25g×12粒",
+        "0.25g×20粒",
+        "0.25g×24粒",
+        "0.25g×50粒",
+        "0.5g×12粒",
+        "0.5g×20粒",
+        "0.5g×24粒"
+      ]
+    },
+    {
+      "name": "别嘌醇片",
+      "drug_type": "降尿酸药",
+      "default_department": "肾内科",
+      "specifications": [
+        "50mg×10片",
+        "50mg×20片",
+        "50mg×30片",
+        "100mg×10片",
+        "100mg×20片",
+        "100mg×30片",
+        "100mg×50片",
+        "300mg×10片",
+        "300mg×20片",
+        "300mg×30片"
+      ]
+    },
+    {
+      "name": "沙丁胺醇气雾剂",
+      "drug_type": "支气管舒张药",
+      "default_department": "呼吸内科",
+      "specifications": [
+        "100μg/揿×100揿",
+        "100μg/揿×200揿",
+        "100μg/揿×300揿",
+        "120μg/揿×100揿",
+        "120μg/揿×200揿",
+        "120μg/揿×300揿",
+        "200μg/揿×100揿",
+        "200μg/揿×200揿",
+        "200μg/揿×300揿",
+        "100μg/揿×400揿"
+      ]
+    },
+    {
+      "name": "左甲状腺素钠片",
+      "drug_type": "甲状腺激素",
+      "default_department": "内分泌科",
+      "specifications": [
+        "25μg×100片",
+        "50μg×50片",
+        "50μg×100片",
+        "75μg×50片",
+        "75μg×100片",
+        "88μg×50片",
+        "88μg×100片",
+        "100μg×50片",
+        "100μg×100片",
+        "125μg×100片"
+      ]
+    }
+  ],
+  "risk_rules": [
+    {
+      "id": "RR01",
+      "name": "特殊人群与高风险用药",
+      "min_level": "B",
+      "description": "涉及孕妇、备孕、哺乳期、严重肝肾功能不全、透析、器官移植、肿瘤、免疫抑制、抗凝、胰岛素、抗癫痫或精神类药物时，至少按 B 级审核，必要时按 C 级。",
+      "tags": [
+        "pregnancy",
+        "preconception",
+        "lactation",
+        "severe_hepatic_renal_impairment",
+        "dialysis",
+        "transplant",
+        "oncology",
+        "immunosuppression",
+        "anticoagulant",
+        "insulin",
+        "antiepileptic",
+        "psychiatric_medication"
+      ]
+    },
+    {
+      "id": "RR02",
+      "name": "严重程度升级",
+      "min_level": "B",
+      "description": "用药过量、不良反应、禁忌和相互作用的一般事实核对可为 A 级；需要判断是否就医、停药或存在严重后果时升级为 B/C 级。",
+      "tags": [
+        "severe_overdose",
+        "serious_adverse_reaction",
+        "high_risk_contraindication",
+        "serious_drug_interaction",
+        "medical_triage",
+        "stop_medication_judgment"
+      ]
+    },
+    {
+      "id": "RR03",
+      "name": "医嘱与说明书冲突",
+      "min_level": "B",
+      "description": "涉及处方医嘱与说明书不一致时，不按普通说明书问答处理，至少按 B 级审核。",
+      "tags": [
+        "prescription_label_conflict"
+      ]
+    },
+    {
+      "id": "RR04",
+      "name": "剂量换算与高风险操作",
+      "min_level": "B",
+      "description": "涉及剂量换算、儿童体重剂量、分片、浓度、注射剂、吸入装置、贴剂、滴眼或滴耳等操作风险时升级为 B 级；高警示药或儿童精确剂量升级为 C 级。",
+      "tag_levels": {
+        "pediatric_exact_dose": "C",
+        "high_alert_medication": "C"
+      },
+      "tags": [
+        "dose_calculation",
+        "pediatric_exact_dose",
+        "tablet_splitting",
+        "concentration_conversion",
+        "injection",
+        "inhaler",
+        "patch",
+        "eye_drop",
+        "ear_drop",
+        "high_alert_medication"
+      ]
+    },
+    {
+      "id": "RR05",
+      "name": "治疗决策越权检查",
+      "min_level": "A",
+      "description": "涉及推荐药、换药、停药、加量、减量或替代品牌时，AI 不应直接给出治疗决策，审核时重点检查是否越权。",
+      "tags": [
+        "drug_recommendation",
+        "drug_substitution",
+        "stop_medication",
+        "dose_increase",
+        "dose_decrease",
+        "brand_substitution"
+      ]
+    }
+  ],
+  "question_types": [
+    {
+      "code": "A01",
+      "name": "药品基本属性",
+      "base_level": "A",
+      "typical_question": "这个药是治什么的？",
+      "review_focus": "核对通用名、商品名、规格、性状、药理类别和适应症原文，不扩大治疗范围。",
+      "default_risk_tags": [
+        "fact_check",
+        "drug_attribute"
+      ]
+    },
+    {
+      "code": "A02",
+      "name": "适应症/功能主治事实核对",
+      "base_level": "A",
+      "typical_question": "这个药主要用于什么病？",
+      "review_focus": "仅核对说明书适应症或数据库 indication，不判断个体是否适合使用。",
+      "default_risk_tags": [
+        "fact_check",
+        "indication"
+      ]
+    },
+    {
+      "code": "A03",
+      "name": "用法用量",
+      "base_level": "A",
+      "typical_question": "一天吃几次？每次多少？",
+      "review_focus": "核对剂量、频次、给药途径和最大日剂量；有处方医嘱时优先核对医嘱。",
+      "default_risk_tags": [
+        "dosage",
+        "prescription_order"
+      ]
+    },
+    {
+      "code": "A04",
+      "name": "服用时间",
+      "base_level": "A",
+      "typical_question": "饭前吃还是饭后吃？",
+      "review_focus": "核对说明书或医嘱中的服用时间；资料未明确时不得推断。",
+      "default_risk_tags": [
+        "administration_time"
+      ]
+    },
+    {
+      "code": "A05",
+      "name": "给药方式/操作方法",
+      "base_level": "A",
+      "typical_question": "眼药水怎么滴？",
+      "review_focus": "核对给药步骤、部位、频次和清洁要求；复杂器械操作可升级为 B 级。",
+      "default_risk_tags": [
+        "administration_operation"
+      ]
+    },
+    {
+      "code": "A06",
+      "name": "疗程与起效时间",
+      "base_level": "A",
+      "typical_question": "要吃多久？多久见效？",
+      "review_focus": "核对疗程、起效时间或复诊提示；资料未提供时提示遵医嘱。",
+      "default_risk_tags": [
+        "treatment_course",
+        "onset_time"
+      ]
+    },
+    {
+      "code": "A07",
+      "name": "忘记/漏服用药",
+      "base_level": "A",
+      "typical_question": "漏服一次怎么办？",
+      "review_focus": "核对补服或跳过原则、时间窗口和是否禁止加倍补服。",
+      "default_risk_tags": [
+        "missed_dose"
+      ]
+    },
+    {
+      "code": "A08",
+      "name": "一般用药过量",
+      "base_level": "A",
+      "typical_question": "多吃了一片怎么办？",
+      "review_focus": "核对说明书过量处理原则；出现明显症状或涉及高危药品时升级为 B/C 级。",
+      "default_risk_tags": [
+        "general_overdose"
+      ]
+    },
+    {
+      "code": "A09",
+      "name": "提前停药/减量",
+      "base_level": "A",
+      "typical_question": "感觉好了能停药吗？",
+      "review_focus": "核对疗程要求和擅自停药风险；抗感染、激素、精神类等用药需升级。",
+      "default_risk_tags": [
+        "stop_medication",
+        "dose_decrease"
+      ]
+    },
+    {
+      "code": "A10",
+      "name": "饮食与生活方式",
+      "base_level": "A",
+      "typical_question": "吃药期间能喝酒吗？",
+      "review_focus": "核对酒精、食物、咖啡因、驾驶和运动等注意事项。",
+      "default_risk_tags": [
+        "food_interaction",
+        "lifestyle"
+      ]
+    },
+    {
+      "code": "A11",
+      "name": "一般不良反应",
+      "base_level": "A",
+      "typical_question": "吃了有点恶心正常吗？",
+      "review_focus": "核对常见不良反应，确保描述准确且不遗漏就医提示。",
+      "default_risk_tags": [
+        "general_adverse_reaction"
+      ]
+    },
+    {
+      "code": "A12",
+      "name": "一般注意事项",
+      "base_level": "A",
+      "typical_question": "吃这个药要注意什么？",
+      "review_focus": "核对说明书注意事项，转为患者可读摘要，不新增说明书外内容。",
+      "default_risk_tags": [
+        "precaution",
+        "fact_check"
+      ]
+    },
+    {
+      "code": "A13",
+      "name": "储藏方式",
+      "base_level": "A",
+      "typical_question": "这个药怎么保存？",
+      "review_focus": "核对温度、避光、防潮、冷藏、有效期和开封后保存要求。",
+      "default_risk_tags": [
+        "storage"
+      ]
+    },
+    {
+      "code": "A14",
+      "name": "包装/规格/性状",
+      "base_level": "A",
+      "typical_question": "一盒多少片？",
+      "review_focus": "核对规格、包装、性状和最小单位，避免与其他厂家混淆。",
+      "default_risk_tags": [
+        "package_specification",
+        "drug_attribute"
+      ]
+    },
+    {
+      "code": "A15",
+      "name": "科室归属",
+      "base_level": "A",
+      "typical_question": "这个药通常属于哪个科室？",
+      "review_focus": "核对适应症和常见使用场景，返回一个或多个科室 code，不作为诊断建议。",
+      "default_risk_tags": [
+        "department_mapping"
+      ]
+    },
+    {
+      "code": "B01",
+      "name": "是否适合当前患者",
+      "base_level": "B",
+      "typical_question": "我这个症状适合吃吗？",
+      "review_focus": "区分说明书适应症与患者自述症状，避免把药品推荐成诊断或治疗方案。",
+      "default_risk_tags": [
+        "patient_suitability",
+        "drug_recommendation"
+      ]
+    },
+    {
+      "code": "B02",
+      "name": "慎用人群/基础疾病",
+      "base_level": "B",
+      "typical_question": "有高血压、糖尿病或胃病能吃吗？",
+      "review_focus": "核对慎用、禁忌和注意事项；涉及合并症时判断是否需要医生确认。",
+      "default_risk_tags": [
+        "comorbidity",
+        "caution_contraindication"
+      ]
+    },
+    {
+      "code": "B03",
+      "name": "肝肾功能异常",
+      "base_level": "B",
+      "typical_question": "肾不好能吃吗？",
+      "review_focus": "核对肝肾功能调整、禁用或慎用条件及监测要求。",
+      "default_risk_tags": [
+        "hepatic_renal_impairment"
+      ]
+    },
+    {
+      "code": "B04",
+      "name": "儿童/青少年用药",
+      "base_level": "B",
+      "typical_question": "小孩能吃吗？",
+      "review_focus": "核对年龄、体重、剂型和剂量；按体重精确换算或超说明书时升级为 C 级。",
+      "default_risk_tags": [
+        "pediatric"
+      ]
+    },
+    {
+      "code": "B05",
+      "name": "老年人用药",
+      "base_level": "B",
+      "typical_question": "老人能吃吗？",
+      "review_focus": "核对老年用药专节、肝肾功能减退及跌倒、嗜睡、出血等风险。",
+      "default_risk_tags": [
+        "geriatric"
+      ]
+    },
+    {
+      "code": "B06",
+      "name": "严重不良反应识别",
+      "base_level": "B",
+      "typical_question": "出现什么情况要马上去医院？",
+      "review_focus": "区分常见反应与严重反应，核对停药和就医信号。",
+      "default_risk_tags": [
+        "serious_adverse_reaction",
+        "medical_triage"
+      ]
+    },
+    {
+      "code": "B07",
+      "name": "检查监测/复查",
+      "base_level": "B",
+      "typical_question": "吃药期间要查什么？",
+      "review_focus": "核对血常规、肝肾功能、凝血、血糖、甲功或血药浓度等监测要求。",
+      "default_risk_tags": [
+        "monitoring"
+      ]
+    },
+    {
+      "code": "B08",
+      "name": "医嘱与说明书不一致",
+      "base_level": "B",
+      "typical_question": "医生开的和说明书不同，听谁的？",
+      "review_focus": "核对医嘱优先边界，不擅自否定处方，提示联系开方医生或药师确认。",
+      "default_risk_tags": [
+        "prescription_label_conflict"
+      ]
+    },
+    {
+      "code": "B09",
+      "name": "多主题组合问题",
+      "base_level": "B",
+      "typical_question": "怎么吃？有什么副作用？老人能不能吃？",
+      "review_focus": "拆分主题分别审核，确保用法、风险和人群判断不相互混淆。",
+      "default_risk_tags": [
+        "multi_topic"
+      ]
+    },
+    {
+      "code": "B10",
+      "name": "重复用药/同成分识别",
+      "base_level": "B",
+      "typical_question": "这两个药能一起吃吗？是不是一样？",
+      "review_focus": "核对通用名、成分和复方成分，识别重复用药风险；多药相互作用升级为 C 级。",
+      "default_risk_tags": [
+        "duplicate_ingredient"
+      ]
+    },
+    {
+      "code": "B11",
+      "name": "药品替换/品牌差异",
+      "base_level": "B",
+      "typical_question": "没有这个牌子能换另一个吗？",
+      "review_focus": "核对通用名、规格、剂型和厂家差异，不得直接建议替换处方药。",
+      "default_risk_tags": [
+        "brand_substitution",
+        "drug_substitution"
+      ]
+    },
+    {
+      "code": "B12",
+      "name": "医院自制药/资料不足",
+      "base_level": "B",
+      "typical_question": "医院自制药怎么用？",
+      "review_focus": "核对院内资料、医嘱和标签；资料不足时明确不能用通用说明书替代。",
+      "default_risk_tags": [
+        "hospital_preparation",
+        "insufficient_information"
+      ]
+    },
+    {
+      "code": "C01",
+      "name": "孕妇/备孕/哺乳期用药",
+      "base_level": "C",
+      "typical_question": "怀孕了能吃吗？",
+      "review_focus": "核对妊娠和哺乳资料，评估胎儿或婴儿风险，避免给出简单的能或不能。",
+      "default_risk_tags": [
+        "pregnancy",
+        "preconception",
+        "lactation"
+      ]
+    },
+    {
+      "code": "C02",
+      "name": "高危禁忌症",
+      "base_level": "C",
+      "typical_question": "什么情况绝对不能吃？",
+      "review_focus": "核对绝对禁忌、相对禁忌、严重过敏史和禁忌冲突，确认无致命遗漏。",
+      "default_risk_tags": [
+        "high_risk_contraindication",
+        "severe_allergy"
+      ]
+    },
+    {
+      "code": "C03",
+      "name": "多药相互作用",
+      "base_level": "C",
+      "typical_question": "这个药能和华法林、降糖药或抗癫痫药一起用吗？",
+      "review_focus": "核对相互作用数据库、代谢酶及出血、低血糖、心律失常等严重风险。",
+      "default_risk_tags": [
+        "serious_drug_interaction",
+        "anticoagulant",
+        "antiepileptic"
+      ]
+    },
+    {
+      "code": "C04",
+      "name": "高警示药品用药",
+      "base_level": "C",
+      "typical_question": "胰岛素、抗凝药或抗肿瘤药怎么调整？",
+      "review_focus": "涉及剂量调整、监测和严重后果时，不直接给出调整建议。",
+      "default_risk_tags": [
+        "high_alert_medication",
+        "insulin",
+        "anticoagulant",
+        "oncology"
+      ]
+    },
+    {
+      "code": "C05",
+      "name": "严重肝肾功能不全/透析/移植",
+      "base_level": "C",
+      "typical_question": "透析患者能用吗？",
+      "review_focus": "核对禁用、剂量调整、透析清除及免疫抑制药相互作用。",
+      "default_risk_tags": [
+        "severe_hepatic_renal_impairment",
+        "dialysis",
+        "transplant",
+        "immunosuppression"
+      ]
+    },
+    {
+      "code": "C06",
+      "name": "儿童精确剂量/超说明书",
+      "base_level": "C",
+      "typical_question": "孩子 12kg 应该吃多少？",
+      "review_focus": "审核体重或体表面积换算、分片、浓度换算及超说明书使用。",
+      "default_risk_tags": [
+        "pediatric_exact_dose",
+        "dose_calculation",
+        "off_label_use"
+      ]
+    },
+    {
+      "code": "C07",
+      "name": "用药后急症分诊",
+      "base_level": "C",
+      "typical_question": "吃完胸闷、呼吸困难或出血怎么办？",
+      "review_focus": "判断严重过敏、出血、心血管或神经系统风险，优先给出紧急就医提示。",
+      "default_risk_tags": [
+        "acute_triage",
+        "medical_triage",
+        "serious_adverse_reaction"
+      ]
+    },
+    {
+      "code": "C08",
+      "name": "超说明书/适应症外用药",
+      "base_level": "C",
+      "typical_question": "医生让我这样用，但说明书没有写，可以吗？",
+      "review_focus": "核对指南、临床路径和处方合理性边界，避免把 AI 输出作为处方依据。",
+      "default_risk_tags": [
+        "off_label_use",
+        "prescription_order"
+      ]
+    },
+    {
+      "code": "C09",
+      "name": "肿瘤、免疫、罕见病用药",
+      "base_level": "C",
+      "typical_question": "靶向药或免疫药能和这个药一起用吗？",
+      "review_focus": "结合专科治疗方案、疗程、监测和不良反应叠加风险进行审核。",
+      "default_risk_tags": [
+        "oncology",
+        "immunosuppression",
+        "rare_disease"
+      ]
+    }
+  ]
+}

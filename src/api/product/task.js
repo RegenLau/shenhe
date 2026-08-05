@@ -40,11 +40,11 @@ export default {
     })
   },
 
-  confirmImport(previewId) {
+  confirmImport(previewToken) {
     return request({
       url: '/core/product/task/importConfirm',
       method: 'post',
-      data: { preview_id: previewId }
+      data: { preview_token: previewToken }
     })
   },
 

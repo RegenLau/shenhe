@@ -9,10 +9,11 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "validate": "node --check src/server.js"
+    "validate": "node --check src/server.js && node --test src/question-bank.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",
+    "exceljs": "4.4.0",
     "express": "^4.21.2",
     "morgan": "^1.10.0"
   }
