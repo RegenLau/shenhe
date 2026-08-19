@@ -61,10 +61,10 @@
     >
       <template #tableSearch>
         <a-col :xs="24" :sm="12">
-          <a-form-item field="keyword" label="任务批次">
+          <a-form-item field="keyword" label="批次或项目">
             <a-input
               v-model="searchForm.keyword"
-              placeholder="任务批次编号或医生姓名"
+              placeholder="批次编号、基金会、项目、项目标识或医生"
               allow-clear
             />
           </a-form-item>
@@ -85,6 +85,13 @@
         <div class="batch-cell">
           <strong>{{ record.batch_no || '—' }}</strong>
           <span :title="record.display_title">{{ record.display_title || '—' }}</span>
+        </div>
+      </template>
+
+      <template #identifier_name="{ record }">
+        <div class="org-cell">
+          <span class="org-primary">{{ record.identifier_name || '—' }}</span>
+          <span class="org-path">{{ record.foundation_name || '—' }}</span>
         </div>
       </template>
 
@@ -183,6 +190,7 @@ const options = reactive({
 
 const columns = reactive([
   { title: '任务批次编号', dataIndex: 'batch_no', width: 210, fixed: 'left' },
+  { title: '项目归属', dataIndex: 'identifier_name', width: 220 },
   {
     title: '批次状态',
     dataIndex: 'status',
@@ -310,6 +318,29 @@ onMounted(() => {
     color: var(--color-text-3);
     font-size: 12px;
   }
+}
+
+.org-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+}
+
+.org-primary {
+  color: var(--color-text-1);
+  font-weight: 500;
+}
+
+.org-path {
+  color: var(--color-text-3);
+  font-size: 12px;
 }
 
 .points-text {

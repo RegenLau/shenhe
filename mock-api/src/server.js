@@ -31,6 +31,13 @@ const reviewIssueTypes = [
   'safety_risk',
   'other'
 ]
+const reviewIssueTypeLabels = {
+  content_inaccurate: '内容不准确',
+  expression_nonstandard: '表述不规范',
+  info_incomplete: '信息不完整',
+  safety_risk: '存在安全风险',
+  other: '其他'
+}
 const withdrawalSettlementStatuses = ['pending', 'exported', 'settled']
 const settlementBatchStatuses = ['pending', 'exported', 'partial', 'settled', 'blocked']
 const doctorAccountStatuses = ['pending_activation', 'active', 'disabled']
@@ -1200,6 +1207,29 @@ function buildSettlementBatches(records = []) {
     const eligibleRows = batchRows.filter(
       (item) => getSettlementDoctorEligibility(item).eligible
     )
+    const organizationRows = tasks
+      .filter((task) => getTaskBatchNo(task) === batchNo)
+      .map(hydrateTask)
+      .map((task) => ({
+        foundation_name: task.foundation_name || '',
+        project_name: task.project_name || '',
+        identifier_name: task.identifier_name || ''
+      }))
+      .filter(
+        (organization) =>
+          organization.foundation_name ||
+          organization.project_name ||
+          organization.identifier_name
+      )
+    const firstOrganization = organizationRows[0] || {}
+    const organizationKey = (organization) =>
+      [
+        organization.foundation_name,
+        organization.project_name,
+        organization.identifier_name
+      ].join('|')
+    const hasMultipleOrganizations =
+      new Set(organizationRows.map(organizationKey)).size > 1
     const firstDate = dates[0] || ''
     const lastDate = dates.at(-1) || ''
 
@@ -1207,6 +1237,15 @@ function buildSettlementBatches(records = []) {
       id: batchNo,
       batch_no: batchNo,
       display_title: `任务批次 ${batchNo}`,
+      foundation_name: hasMultipleOrganizations
+        ? '多个基金会'
+        : firstOrganization.foundation_name || '',
+      project_name: hasMultipleOrganizations
+        ? '多个项目'
+        : firstOrganization.project_name || '',
+      identifier_name: hasMultipleOrganizations
+        ? '多个项目标识'
+        : firstOrganization.identifier_name || '',
       status:
         taskSettlements.some((item) => item.status === 'blocked')
           ? taskSettlements.some((item) => item.status !== 'blocked')
@@ -3528,6 +3567,9 @@ app.get('/core/product/withdrawal/batch/index', (req, res) => {
       return [
         batch.batch_no,
         batch.display_title,
+        batch.foundation_name,
+        batch.project_name,
+        batch.identifier_name,
         ...batch.task_settlements.flatMap((item) => [
           item.doctor_name,
           item.hospital
@@ -3853,6 +3895,155 @@ app.post('/core/product/withdrawal/settlementImportConfirm', (req, res) => {
       `已更新 ${updatedCount} 条任务结算记录，跳过 ${skippedCount} 条`
     )
   )
+})
+
+function formatReviewAnswer(answer) {
+  if (typeof answer === 'string') return answer
+  if (!answer || typeof answer !== 'object') return ''
+
+  const sections = [
+    ['用药建议', answer.suggestion],
+    ['用法用量', answer.dosage],
+    ['注意事项', answer.precautions],
+    ['药物相互作用', answer.interaction],
+    ['就医提醒', answer.warning]
+  ]
+
+  return sections
+    .filter(([, value]) => value !== undefined && value !== null && String(value).trim())
+    .map(([label, value]) => {
+      const text = Array.isArray(value) ? value.filter(Boolean).join('；') : String(value)
+      return `${label}：${text}`
+    })
+    .join('\n')
+}
+
+function buildSettlementReviewRows(batchNo, settlementWithdrawals = []) {
+  const reviewRowsByTask = new Map()
+  reviews.forEach((review) => {
+    const taskId = Number(review.task_id)
+    const rows = reviewRowsByTask.get(taskId) || []
+    rows.push(review)
+    reviewRowsByTask.set(taskId, rows)
+  })
+  reviewRowsByTask.forEach((rows) => {
+    rows.sort(
+      (left, right) =>
+        String(left.review_time).localeCompare(String(right.review_time)) || left.id - right.id
+    )
+  })
+
+  const consumedByTask = new Map()
+  return settlementWithdrawals.flatMap((withdrawal) => {
+    const taskId = Number(withdrawal.source_task_id)
+    const taskReviews = reviewRowsByTask.get(taskId) || []
+    const consumedCount = consumedByTask.get(taskId) || 0
+    const reviewCount = Math.max(Number(withdrawal.source_review_count) || 0, 0)
+    const selectedReviews = taskReviews.slice(consumedCount, consumedCount + reviewCount)
+    consumedByTask.set(taskId, consumedCount + reviewCount)
+
+    return selectedReviews.map((review) => [
+      batchNo,
+      withdrawal.withdrawal_no,
+      review.review_no,
+      review.task_no,
+      review.doctor_id,
+      review.doctor_name,
+      toExcelText(review.doctor_phone, /^\d{11}$/),
+      review.hospital,
+      review.department,
+      review.drug_name,
+      review.drug_specification,
+      review.drug_manufacturer,
+      review.disease_type,
+      review.question_department,
+      review.type_name,
+      review.question,
+      formatReviewAnswer(review.answer),
+      review.result === 'rejected' ? '修改' : '赞同',
+      reviewIssueTypeLabels[review.issue_type] || review.issue_type || '',
+      review.review_comment,
+      review.review_time
+    ])
+  })
+}
+
+app.post('/core/product/withdrawal/exportReviewRecords', (req, res) => {
+  const batchNo = String(req.body?.batch_no || '').trim()
+
+  if (!batchNo) {
+    res.json(failure(422, '请提供要导出的任务批次'))
+    return
+  }
+
+  const batch = buildSettlementBatches(withdrawals).find(
+    (item) => item.batch_no === batchNo
+  )
+  if (!batch) {
+    res.json(failure(404, '任务批次不存在或暂无结算记录，请返回列表后重试'))
+    return
+  }
+
+  const pendingWithdrawals = withdrawals
+    .filter(
+      (withdrawal) =>
+        getWithdrawalTaskBatchNo(withdrawal) === batchNo &&
+        getSettlementDoctorEligibility(withdrawal).eligible &&
+        withdrawal.settlement_status === 'pending'
+    )
+    .sort(
+      (left, right) =>
+        left.apply_time.localeCompare(right.apply_time) || left.id - right.id
+    )
+
+  if (pendingWithdrawals.length === 0) {
+    res.json(failure(422, '当前批次暂无待导出的医生结算记录'))
+    return
+  }
+
+  const exportTime = formatDateTime()
+  const rows = [
+    [
+      '任务批次编号',
+      '结算单号',
+      '审核记录编号',
+      '任务编号',
+      '医生ID',
+      '医生姓名',
+      '手机号',
+      '医院',
+      '科室',
+      '药品名称',
+      '药品规格',
+      '生产厂家',
+      '疾病分类',
+      '问题科室',
+      '问题类型',
+      '审核问题',
+      '问题对应答案',
+      '审核结论',
+      '不通过类型',
+      '审核意见',
+      '审核时间'
+    ],
+    ...buildSettlementReviewRows(batchNo, pendingWithdrawals)
+  ]
+
+  if (rows.length === 1) {
+    res.json(failure(422, '当前批次没有可导出的医生审核记录'))
+    return
+  }
+
+  const csv = rows.map((row) => row.map(escapeCsvCell).join(',')).join('\r\n')
+  const exportBatch = exportTime.replaceAll(/[-: ]/g, '')
+
+  res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="doctor-review-records-${batchNo}-${exportBatch}.csv"`
+  )
+  res.send(`\uFEFF${csv}`)
 })
 
 app.post('/core/product/withdrawal/export', (req, res) => {

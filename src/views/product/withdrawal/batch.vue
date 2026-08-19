@@ -8,7 +8,6 @@
         </a-button>
         <div class="header-title">
           <h1>{{ batch.display_title || '任务批次结算' }}</h1>
-          <p>{{ batch.batch_no || '—' }} · 查看每位医生的审核结算</p>
         </div>
       </div>
       <a-space wrap>
@@ -26,7 +25,7 @@
           @click="confirmExport"
         >
           <template #icon><icon-download /></template>
-          导出批次名单
+          导出结算文件
         </a-button>
       </a-space>
     </header>
@@ -44,8 +43,9 @@
 
     <a-spin v-else :loading="loading" class="batch-content">
       <template v-if="batch.batch_no">
-        <a-alert type="info" show-icon>
+        <a-alert type="info" show-icon class="batch-tip">
           当前结算范围与任务管理中的同编号批次一致。单个医生在本批次的审核条数全部完成后才能结算；部分医生完成时，只导出已完成医生的名单，基金会完成结算后，请在本批次导入名单回写状态。
+          点击“导出结算文件”会分别下载结算表和对应医生的审核记录，审核记录包含问题、答案及审核意见。
         </a-alert>
 
         <a-row :gutter="[16, 16]" class="summary-grid">
@@ -82,24 +82,6 @@
             </a-card>
           </a-col>
         </a-row>
-
-        <a-card :bordered="false" class="info-card" title="批次信息">
-          <a-descriptions :column="descriptionColumns" bordered>
-            <a-descriptions-item label="批次状态">
-              <sa-dict
-                :value="batch.status"
-                dict="settlement_batch_status"
-                render="span"
-              />
-            </a-descriptions-item>
-            <a-descriptions-item label="导出时间">
-              {{ batch.exported_at || '—' }}
-            </a-descriptions-item>
-            <a-descriptions-item label="完成时间">
-              {{ batch.settled_at || '—' }}
-            </a-descriptions-item>
-          </a-descriptions>
-        </a-card>
 
         <a-card :bordered="false" class="detail-card" title="医生审核结算">
           <a-table
@@ -204,8 +186,6 @@ const canImport = computed(() =>
     (item) => item.settlement_eligible && ['exported', 'partial'].includes(item.status)
   )
 )
-const descriptionColumns = computed(() => (window.innerWidth < 768 ? 1 : 2))
-
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
 const formatPoints = (value) => `${formatNumber(Number(value || 0) / 100)} 积分`
 const loadDetail = async () => {
@@ -228,16 +208,25 @@ const loadDetail = async () => {
 const exportBatch = async () => {
   exporting.value = true
   try {
-    const response = await withdrawalApi.exportBatch(batchNo)
-    if (response?.status !== 200) {
-      Message.error('任务批次结算名单导出失败，请稍后重试')
+    const reviewResponse = await withdrawalApi.exportBatchReviewRecords(batchNo)
+    if (reviewResponse?.status !== 200) {
+      Message.error('医生审核记录导出失败，请稍后重试')
       return
     }
-    tool.download(response)
-    Message.success('任务批次结算名单已导出')
+
+    tool.download(reviewResponse)
+
+    const settlementResponse = await withdrawalApi.exportBatch(batchNo)
+    if (settlementResponse?.status !== 200) {
+      Message.error('结算表导出失败，医生审核记录已下载，请重试结算表导出')
+      return
+    }
+
+    tool.download(settlementResponse)
+    Message.success('结算表和医生审核记录已分别导出')
     await loadDetail()
   } catch {
-    Message.error('任务批次结算名单导出失败，请检查网络后重试')
+    Message.error('结算文件导出失败，请检查网络后重试')
   } finally {
     exporting.value = false
   }
@@ -245,8 +234,9 @@ const exportBatch = async () => {
 
 const confirmExport = () => {
   Modal.confirm({
-    title: '确认导出当前任务批次的结算名单',
-    content: '导出文件包含医生身份证号、银行卡号等敏感信息，仅限交付基金会线下结算，请妥善保管。',
+    title: '确认导出当前任务批次的结算文件',
+    content:
+      '本次将分别下载结算表和医生审核记录。文件包含医生联系方式、银行卡号及审核问答等业务信息，仅限结算使用，请妥善保管。',
     width: 'min(420px, calc(100vw - 32px))',
     okText: '确认导出',
     onOk: exportBatch
@@ -293,11 +283,6 @@ onMounted(loadDetail)
     line-height: 28px;
   }
 
-  p {
-    margin: 4px 0 0;
-    color: var(--color-text-3);
-    line-height: 20px;
-  }
 }
 
 .batch-content {
@@ -306,10 +291,17 @@ onMounted(loadDetail)
   min-height: 420px;
 }
 
-.summary-grid,
-.info-card,
+.batch-tip,
 .detail-card {
   margin-top: 16px;
+}
+
+.batch-tip {
+  margin-bottom: 16px;
+}
+
+.summary-grid {
+  margin-top: 0;
 }
 
 .stack-cell {

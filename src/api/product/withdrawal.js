@@ -58,6 +58,15 @@ export default {
     })
   },
 
+  exportBatchReviewRecords(batchNo) {
+    return request({
+      url: '/core/product/withdrawal/exportReviewRecords',
+      method: 'post',
+      data: { batch_no: batchNo },
+      responseType: 'blob'
+    })
+  },
+
   previewSettlementImport(data = {}) {
     return request({
       url: '/core/product/withdrawal/settlementImportPreview',
