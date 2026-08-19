@@ -1,0 +1,125 @@
+{
+  "foundations": [
+    {
+      "id": 1,
+      "name": "中国人权发展基金会",
+      "code": "F-CNHRF",
+      "status": "1",
+      "remark": "演示用基金会数据",
+      "create_time": "2026-05-12 09:00:00",
+      "update_time": "2026-07-20 10:00:00"
+    },
+    {
+      "id": 2,
+      "name": "银龄健康公益基金会",
+      "code": "F-YLJK",
+      "status": "1",
+      "remark": "",
+      "create_time": "2026-06-03 14:30:00",
+      "update_time": "2026-06-03 14:30:00"
+    },
+    {
+      "id": 3,
+      "name": "乡村医药援助基金会",
+      "code": "F-XCYY",
+      "status": "2",
+      "remark": "合作暂停期间停用，历史项目数据仅用于核对；恢复合作后可再次启用",
+      "create_time": "2026-04-21 11:20:00",
+      "update_time": "2026-07-28 16:45:00"
+    }
+  ],
+  "projects": [
+    {
+      "id": 1,
+      "foundation_id": 1,
+      "name": "希息药事审核项目",
+      "code": "P-XXYS",
+      "status": "1",
+      "remark": "医生审核任务主项目",
+      "create_time": "2026-05-13 10:00:00",
+      "update_time": "2026-08-01 09:10:00"
+    },
+    {
+      "id": 2,
+      "foundation_id": 1,
+      "name": "合理用药科普项目",
+      "code": "P-HLYS",
+      "status": "1",
+      "remark": "",
+      "create_time": "2026-06-15 15:00:00",
+      "update_time": "2026-06-15 15:00:00"
+    },
+    {
+      "id": 3,
+      "foundation_id": 2,
+      "name": "慢病管理随访项目",
+      "code": "P-MBGL",
+      "status": "1",
+      "remark": "面向社区慢病人群的随访项目",
+      "create_time": "2026-06-05 09:40:00",
+      "update_time": "2026-07-11 13:25:00"
+    },
+    {
+      "id": 4,
+      "foundation_id": 3,
+      "name": "乡村药事服务能力建设项目",
+      "code": "P-XCYS",
+      "status": "2",
+      "remark": "项目暂停执行",
+      "create_time": "2026-04-25 10:10:00",
+      "update_time": "2026-07-29 08:55:00"
+    }
+  ],
+  "identifiers": [
+    {
+      "id": 1,
+      "project_id": 1,
+      "name": "医生端小程序",
+      "code": "XXYS-DOC",
+      "status": "1",
+      "remark": "医生接单与审核入口",
+      "create_time": "2026-05-13 10:05:00",
+      "update_time": "2026-05-13 10:05:00"
+    },
+    {
+      "id": 2,
+      "project_id": 1,
+      "name": "运营管理后台",
+      "code": "XXYS-OPS",
+      "status": "1",
+      "remark": "",
+      "create_time": "2026-05-13 10:06:00",
+      "update_time": "2026-05-13 10:06:00"
+    },
+    {
+      "id": 3,
+      "project_id": 2,
+      "name": "科普内容专栏",
+      "code": "HLYS-ZL",
+      "status": "1",
+      "remark": "科普文章发布渠道标识",
+      "create_time": "2026-06-16 11:00:00",
+      "update_time": "2026-06-16 11:00:00"
+    },
+    {
+      "id": 4,
+      "project_id": 3,
+      "name": "随访数据看板",
+      "code": "MBGL-KB",
+      "status": "1",
+      "remark": "",
+      "create_time": "2026-06-06 09:00:00",
+      "update_time": "2026-06-06 09:00:00"
+    },
+    {
+      "id": 5,
+      "project_id": 3,
+      "name": "用于验证超长标识名称在列表中的省略与提示效果的场景数据",
+      "code": "MBGL-LONG-NAME-2026",
+      "status": "2",
+      "remark": "长内容验证数据",
+      "create_time": "2026-06-06 09:05:00",
+      "update_time": "2026-07-15 17:30:00"
+    }
+  ]
+}

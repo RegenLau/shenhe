@@ -75,6 +75,15 @@ const doctorConfigPath = fileURLToPath(
   new URL('../data/doctor-config.json', import.meta.url)
 )
 let doctorConfigRows = JSON.parse(readFileSync(doctorConfigPath, 'utf8'))
+const projectOrgPath = fileURLToPath(
+  new URL('../data/project-org.json', import.meta.url)
+)
+const projectOrgFixture = JSON.parse(readFileSync(projectOrgPath, 'utf8'))
+const projectOrgRows = {
+  foundation: projectOrgFixture.foundations.map((item) => ({ ...item })),
+  project: projectOrgFixture.projects.map((item) => ({ ...item })),
+  identifier: projectOrgFixture.identifiers.map((item) => ({ ...item }))
+}
 const questionBankPath = fileURLToPath(
   new URL('../data/question-bank.json', import.meta.url)
 )
@@ -111,6 +120,20 @@ let nextDoctorId = Math.max(...doctors.map((doctor) => doctor.id)) + 1
 let nextDoctorConfigId =
   doctorConfigRows.reduce((maxId, item) => Math.max(maxId, Number(item.id) || 0), 0) +
   1
+const projectOrgTypeLabels = {
+  foundation: '基金会',
+  project: '项目',
+  identifier: '项目标识'
+}
+const nextProjectOrgId = Object.fromEntries(
+  Object.keys(projectOrgRows).map((type) => [
+    type,
+    projectOrgRows[type].reduce(
+      (maxId, item) => Math.max(maxId, Number(item.id) || 0),
+      0
+    ) + 1
+  ])
+)
 let nextQuestionId =
   questionBankRows.reduce((maxId, item) => Math.max(maxId, Number(item.id) || 0), 0) +
   1
@@ -191,6 +214,169 @@ function normalizeDoctorConfigPayload(payload = {}, fallbackType = '') {
       remark
     }
   }
+}
+
+function normalizeProjectOrgPayload(payload = {}) {
+  const type = String(payload.type || '').trim()
+  const name = String(payload.name || '').trim()
+  const code = String(payload.code || '').trim()
+  const remark = String(payload.remark || '').trim()
+  const status = String(payload.status || '1')
+
+  if (!Object.keys(projectOrgTypeLabels).includes(type)) {
+    return { error: '层级类型无效' }
+  }
+
+  const typeLabel = projectOrgTypeLabels[type]
+  if (!name) {
+    return { error: `请输入${typeLabel}名称` }
+  }
+  if (name.length > 80) {
+    return { error: `${typeLabel}名称不能超过 80 个字符` }
+  }
+  if (code.length > 40) {
+    return { error: `${typeLabel}编码不能超过 40 个字符` }
+  }
+  if (remark.length > 200) {
+    return { error: '备注不能超过 200 个字符' }
+  }
+  if (!['1', '2'].includes(status)) {
+    return { error: '状态值无效' }
+  }
+
+  const data = { name, code, status, remark }
+
+  if (type === 'project') {
+    const foundationId = Number(payload.foundation_id)
+    const foundation = projectOrgRows.foundation.find(
+      (row) => row.id === foundationId
+    )
+    if (!foundation) {
+      return { error: '所属基金会不存在或已删除，请刷新后重试' }
+    }
+    data.foundation_id = foundationId
+  }
+
+  if (type === 'identifier') {
+    const projectId = Number(payload.project_id)
+    const project = projectOrgRows.project.find((row) => row.id === projectId)
+    if (!project) {
+      return { error: '所属项目不存在或已删除，请刷新后重试' }
+    }
+    data.project_id = projectId
+  }
+
+  return { data }
+}
+
+function isSameProjectOrgParent(type, row, data) {
+  if (type === 'project') {
+    return row.foundation_id === data.foundation_id
+  }
+  if (type === 'identifier') {
+    return row.project_id === data.project_id
+  }
+  return true
+}
+
+function findProjectOrgDuplicate(type, data, excludeId = 0) {
+  return projectOrgRows[type].find(
+    (row) =>
+      row.id !== excludeId &&
+      isSameProjectOrgParent(type, row, data) &&
+      row.name.toLowerCase() === data.name.toLowerCase()
+  )
+}
+
+function findProjectOrgCodeDuplicate(type, data, excludeId = 0) {
+  if (!data.code) {
+    return undefined
+  }
+
+  return projectOrgRows[type].find(
+    (row) =>
+      row.id !== excludeId &&
+      isSameProjectOrgParent(type, row, data) &&
+      String(row.code || '').toLowerCase() === data.code.toLowerCase()
+  )
+}
+
+function enrichProjectOrgRow(type, item) {
+  if (type === 'foundation') {
+    return {
+      ...item,
+      project_count: projectOrgRows.project.filter(
+        (row) => row.foundation_id === item.id
+      ).length
+    }
+  }
+
+  if (type === 'project') {
+    const foundation = projectOrgRows.foundation.find(
+      (row) => row.id === item.foundation_id
+    )
+    return {
+      ...item,
+      foundation_name: foundation ? foundation.name : '',
+      identifier_count: projectOrgRows.identifier.filter(
+        (row) => row.project_id === item.id
+      ).length
+    }
+  }
+
+  const project = projectOrgRows.project.find(
+    (row) => row.id === item.project_id
+  )
+  const foundation = project
+    ? projectOrgRows.foundation.find(
+        (row) => row.id === project.foundation_id
+      )
+    : undefined
+  return {
+    ...item,
+    project_name: project ? project.name : '',
+    foundation_name: foundation ? foundation.name : ''
+  }
+}
+
+function buildProjectOrgTree() {
+  const identifierNodesOf = (projectId) =>
+    projectOrgRows.identifier
+      .filter((identifier) => identifier.project_id === projectId)
+      .map((identifier) => ({
+        label: identifier.name,
+        value: `identifier-${identifier.id}`,
+        type: 'identifier',
+        id: identifier.id,
+        project_id: identifier.project_id
+      }))
+
+  const projectNodesOf = (foundationId) =>
+    projectOrgRows.project
+      .filter((project) => project.foundation_id === foundationId)
+      .map((project) => ({
+        label: project.name,
+        value: `project-${project.id}`,
+        type: 'project',
+        id: project.id,
+        foundation_id: project.foundation_id,
+        children: identifierNodesOf(project.id)
+      }))
+
+  return [
+    {
+      label: '全部基金会',
+      value: 'root',
+      type: 'root',
+      children: projectOrgRows.foundation.map((foundation) => ({
+        label: foundation.name,
+        value: `foundation-${foundation.id}`,
+        type: 'foundation',
+        id: foundation.id,
+        children: projectNodesOf(foundation.id)
+      }))
+    }
+  ]
 }
 
 function buildDoctors(fixture = {}) {
@@ -1719,6 +1905,296 @@ app.post('/core/product/doctor-config/changeStatus', (req, res) => {
     success(
       { id: item.id, status: item.status, update_time: item.update_time },
       `${doctorConfigTypeLabels[item.type]}已${status === '1' ? '启用' : '停用'}`
+    )
+  )
+})
+
+app.get('/core/product/project-org/tree', (req, res) => {
+  res.json(
+    success({
+      counts: {
+        foundation: projectOrgRows.foundation.length,
+        project: projectOrgRows.project.length,
+        identifier: projectOrgRows.identifier.length
+      },
+      tree: buildProjectOrgTree()
+    })
+  )
+})
+
+app.get('/core/product/project-org/index', (req, res) => {
+  const type = String(req.query.type || '').trim()
+  const keyword = String(req.query.keyword || '').trim().toLowerCase()
+  const status =
+    req.query.status === 'all' ? '' : String(req.query.status || '').trim()
+  const foundationId = Number(req.query.foundation_id) || 0
+  const projectId = Number(req.query.project_id) || 0
+
+  if (!Object.keys(projectOrgTypeLabels).includes(type)) {
+    res.json(failure(422, '请选择有效的层级类型'))
+    return
+  }
+
+  if (status && !['1', '2'].includes(status)) {
+    res.json(failure(422, '状态筛选值无效'))
+    return
+  }
+
+  if (
+    foundationId &&
+    !projectOrgRows.foundation.some((row) => row.id === foundationId)
+  ) {
+    res.json(failure(404, '所选基金会不存在，请刷新后重试'))
+    return
+  }
+
+  if (projectId && !projectOrgRows.project.some((row) => row.id === projectId)) {
+    res.json(failure(404, '所选项目不存在，请刷新后重试'))
+    return
+  }
+
+  const filteredRows = projectOrgRows[type]
+    .filter((item) => {
+      if (type === 'project' && foundationId && item.foundation_id !== foundationId) {
+        return false
+      }
+      if (type === 'identifier' && projectId && item.project_id !== projectId) {
+        return false
+      }
+      if (type === 'identifier' && foundationId) {
+        const parent = projectOrgRows.project.find(
+          (row) => row.id === item.project_id
+        )
+        if (!parent || parent.foundation_id !== foundationId) {
+          return false
+        }
+      }
+      if (status && item.status !== status) {
+        return false
+      }
+      if (!keyword) {
+        return true
+      }
+
+      return [item.name, item.code, item.remark]
+        .filter(Boolean)
+        .some((value) => String(value).toLowerCase().includes(keyword))
+    })
+    .map((item) => enrichProjectOrgRow(type, item))
+    .sort((left, right) => Number(left.id) - Number(right.id))
+
+  res.json(success(paginate(filteredRows, req.query)))
+})
+
+app.post('/core/product/project-org/save', (req, res) => {
+  const type = String(req.body?.type || '').trim()
+  const normalized = normalizeProjectOrgPayload(req.body)
+
+  if (normalized.error) {
+    res.json(failure(422, normalized.error))
+    return
+  }
+
+  const typeLabel = projectOrgTypeLabels[type]
+
+  if (type === 'project') {
+    const foundation = projectOrgRows.foundation.find(
+      (row) => row.id === normalized.data.foundation_id
+    )
+    if (foundation.status === '2') {
+      res.json(failure(422, '所属基金会已停用，请先启用基金会后再新增项目'))
+      return
+    }
+  }
+
+  if (type === 'identifier') {
+    const project = projectOrgRows.project.find(
+      (row) => row.id === normalized.data.project_id
+    )
+    if (project.status === '2') {
+      res.json(failure(422, '所属项目已停用，请先启用项目后再新增标识'))
+      return
+    }
+  }
+
+  const duplicate = findProjectOrgDuplicate(type, normalized.data)
+  if (duplicate) {
+    res.json(failure(422, `${typeLabel}名称已存在，请勿重复添加`))
+    return
+  }
+
+  const codeDuplicate = findProjectOrgCodeDuplicate(type, normalized.data)
+  if (codeDuplicate) {
+    res.json(failure(422, `${typeLabel}编码已存在，请更换编码`))
+    return
+  }
+
+  const now = formatDateTime()
+  const item = {
+    id: nextProjectOrgId[type],
+    ...normalized.data,
+    create_time: now,
+    update_time: now
+  }
+  nextProjectOrgId[type] += 1
+  projectOrgRows[type].push(item)
+
+  res.json(success(enrichProjectOrgRow(type, item), `${typeLabel}新增成功`))
+})
+
+app.put('/core/product/project-org/update', (req, res) => {
+  const type = String(req.body?.type || '').trim()
+  const id = Number(req.query.id)
+
+  if (!Object.keys(projectOrgTypeLabels).includes(type)) {
+    res.json(failure(422, '层级类型无效'))
+    return
+  }
+
+  if (!Number.isInteger(id) || id <= 0) {
+    res.json(failure(422, '请提供有效的数据 ID'))
+    return
+  }
+
+  const item = projectOrgRows[type].find((row) => row.id === id)
+  if (!item) {
+    res.json(failure(404, `未找到对应${projectOrgTypeLabels[type]}`))
+    return
+  }
+
+  const normalized = normalizeProjectOrgPayload(req.body)
+  if (normalized.error) {
+    res.json(failure(422, normalized.error))
+    return
+  }
+
+  if (
+    type === 'project' &&
+    normalized.data.foundation_id !== item.foundation_id
+  ) {
+    res.json(failure(422, '不能修改项目的所属基金会'))
+    return
+  }
+
+  if (
+    type === 'identifier' &&
+    normalized.data.project_id !== item.project_id
+  ) {
+    res.json(failure(422, '不能修改项目标识的所属项目'))
+    return
+  }
+
+  const duplicate = findProjectOrgDuplicate(type, normalized.data, id)
+  if (duplicate) {
+    res.json(
+      failure(422, `${projectOrgTypeLabels[type]}名称已存在，请更换名称`)
+    )
+    return
+  }
+
+  const codeDuplicate = findProjectOrgCodeDuplicate(type, normalized.data, id)
+  if (codeDuplicate) {
+    res.json(failure(422, `${projectOrgTypeLabels[type]}编码已存在，请更换编码`))
+    return
+  }
+
+  Object.assign(item, normalized.data, { update_time: formatDateTime() })
+  res.json(
+    success(enrichProjectOrgRow(type, item), `${projectOrgTypeLabels[type]}保存成功`)
+  )
+})
+
+app.delete('/core/product/project-org/destroy', (req, res) => {
+  const type = String(req.body?.type || '').trim()
+
+  if (!Object.keys(projectOrgTypeLabels).includes(type)) {
+    res.json(failure(422, '层级类型无效'))
+    return
+  }
+
+  const ids = Array.isArray(req.body?.ids)
+    ? [...new Set(req.body.ids.map(Number))].filter(
+        (id) => Number.isInteger(id) && id > 0
+      )
+    : []
+
+  if (ids.length === 0) {
+    res.json(failure(422, '请选择要删除的数据'))
+    return
+  }
+
+  if (type === 'foundation') {
+    const projectCount = projectOrgRows.project.filter((row) =>
+      ids.includes(row.foundation_id)
+    ).length
+    if (projectCount > 0) {
+      res.json(
+        failure(422, '所选基金会下还存在项目，请先删除或迁移项目后再删除基金会')
+      )
+      return
+    }
+  }
+
+  if (type === 'project') {
+    const identifierCount = projectOrgRows.identifier.filter((row) =>
+      ids.includes(row.project_id)
+    ).length
+    if (identifierCount > 0) {
+      res.json(
+        failure(422, '所选项目下还存在项目标识，请先删除项目标识后再删除项目')
+      )
+      return
+    }
+  }
+
+  const beforeCount = projectOrgRows[type].length
+  projectOrgRows[type] = projectOrgRows[type].filter(
+    (item) => !ids.includes(item.id)
+  )
+  const deletedCount = beforeCount - projectOrgRows[type].length
+
+  if (deletedCount === 0) {
+    res.json(failure(404, '未找到要删除的数据'))
+    return
+  }
+
+  res.json(
+    success({ deleted_count: deletedCount }, `已删除 ${deletedCount} 项数据`)
+  )
+})
+
+app.post('/core/product/project-org/changeStatus', (req, res) => {
+  const type = String(req.body?.type || '').trim()
+  const id = Number(req.body?.id)
+  const status = String(req.body?.status || '')
+
+  if (!Object.keys(projectOrgTypeLabels).includes(type)) {
+    res.json(failure(422, '层级类型无效'))
+    return
+  }
+
+  if (!Number.isInteger(id) || id <= 0) {
+    res.json(failure(422, '请提供有效的数据 ID'))
+    return
+  }
+
+  if (!['1', '2'].includes(status)) {
+    res.json(failure(422, '状态值无效'))
+    return
+  }
+
+  const item = projectOrgRows[type].find((row) => row.id === id)
+  if (!item) {
+    res.json(failure(404, `未找到对应${projectOrgTypeLabels[type]}`))
+    return
+  }
+
+  item.status = status
+  item.update_time = formatDateTime()
+  res.json(
+    success(
+      { id: item.id, status: item.status, update_time: item.update_time },
+      `${projectOrgTypeLabels[type]}已${status === '1' ? '启用' : '停用'}`
     )
   )
 })

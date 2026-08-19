@@ -9,6 +9,16 @@
     ],
     "routers": [
       {
+        "name": "productProjectOrg",
+        "path": "/product/project-org",
+        "component": "product/project-org/index",
+        "meta": {
+          "title": "项目管理",
+          "icon": "icon-layers",
+          "type": "M"
+        }
+      },
+      {
         "name": "productDoctor",
         "path": "/product/doctor",
         "component": "product/doctor/index",
