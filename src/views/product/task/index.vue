@@ -69,9 +69,11 @@
 
       <template #identifier_name="{ record }">
         <div class="org-cell">
-          <span class="org-identifier">{{ record.identifier_name || '—' }}</span>
+          <span class="org-primary">
+            {{ record.foundation_name || '—' }} · {{ record.identifier_name || '—' }}
+          </span>
           <span class="org-path">
-            {{ record.foundation_name || '—' }} · {{ record.project_name || '—' }}
+            项目：{{ record.project_name || '—' }}
           </span>
         </div>
       </template>
@@ -101,6 +103,12 @@
       <template #total_reward_cent="{ record }">
         <span class="money-text">{{ formatPoints(record.total_reward_cent) }}</span>
       </template>
+
+      <template #operationAfterExtend="{ record }">
+        <a-link @click="downloadProgress(record)">
+          {{ exportingBatchKey === record.batch_key ? '导出中…' : '导出进度' }}
+        </a-link>
+      </template>
     </sa-table>
 
     <create-task ref="createRef" @success="refresh" />
@@ -111,6 +119,8 @@
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { Message } from '@arco-design/web-vue'
+import tool from '@/utils/tool'
 import taskApi from '@/api/product/task'
 import CreateTask from './create.vue'
 import ImportTask from './import.vue'
@@ -119,6 +129,7 @@ const crudRef = ref()
 const createRef = ref()
 const importRef = ref()
 const tableError = ref('')
+const exportingBatchKey = ref('')
 const router = useRouter()
 
 const searchForm = ref({
@@ -150,16 +161,36 @@ const loadList = async (params) => {
 
 const openBatch = (record) => {
   router.push({
-    name: 'productTaskBatch',
+    name: 'productTaskBatchDetail',
     params: { batchKey: record.batch_key || record.id || '' }
   })
+}
+
+const downloadProgress = async (record) => {
+  const batchKey = record.batch_key || record.id || ''
+  if (!batchKey || exportingBatchKey.value) return
+
+  exportingBatchKey.value = batchKey
+  try {
+    const response = await taskApi.downloadBatchProgress(batchKey)
+    if (response?.status !== 200) {
+      Message.error('进度数据下载失败，请稍后重试')
+      return
+    }
+    tool.download(response)
+    Message.success('批次进度数据已开始下载')
+  } catch {
+    Message.error('进度数据下载失败，请检查网络后重试')
+  } finally {
+    exportingBatchKey.value = ''
+  }
 }
 
 const options = reactive({
   api: loadList,
   pageLayout: 'normal',
   showSort: false,
-  operationColumnWidth: 110,
+  operationColumnWidth: 190,
   view: {
     show: true,
     text: '批次详情',
@@ -271,7 +302,7 @@ onMounted(refresh)
   }
 }
 
-.org-identifier {
+.org-primary {
   color: var(--color-text-1);
   font-weight: 500;
 }

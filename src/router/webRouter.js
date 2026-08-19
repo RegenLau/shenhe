@@ -6,7 +6,16 @@ const routes = [
     path: '/',
     component: () => import('@/layout/index.vue'),
     redirect: 'dashboard',
-    children: homePageRoutes
+    children: [
+      ...homePageRoutes,
+      {
+        name: 'productTaskBatchDetail',
+        path: '/product/task/batch-detail/:batchKey',
+        component: () => import('@/views/product/task/batch.vue'),
+        hidden: true,
+        meta: { title: '批次详情', hidden: true, type: 'M' }
+      }
+    ]
   },
   {
     name: 'login',

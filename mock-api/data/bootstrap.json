@@ -59,17 +59,6 @@
         }
       },
       {
-        "name": "productTaskBatch",
-        "path": "/product/task/batch/:batchKey",
-        "component": "product/task/batch",
-        "hidden": 1,
-        "meta": {
-          "title": "批次详情",
-          "hidden": true,
-          "type": "M"
-        }
-      },
-      {
         "name": "productReview",
         "path": "/product/review",
         "component": "product/review/index",
