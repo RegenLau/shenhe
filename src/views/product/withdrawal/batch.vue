@@ -45,7 +45,7 @@
     <a-spin v-else :loading="loading" class="batch-content">
       <template v-if="batch.batch_no">
         <a-alert type="info" show-icon>
-          当前结算范围与任务管理中的同编号批次一致。平台仅整理并导出当前任务批次，基金会完成结算后，请在本批次导入名单回写状态。
+          当前结算范围与任务管理中的同编号批次一致。单个医生在本批次的全部任务完成后才能结算；部分医生完成时，只导出已完成医生的名单，基金会完成结算后，请在本批次导入名单回写状态。
         </a-alert>
 
         <a-row :gutter="[16, 16]" class="summary-grid">
@@ -102,7 +102,7 @@
             :data="batch.task_settlements"
             :pagination="{ pageSize: 10 }"
             :bordered="{ wrapper: true, cell: false }"
-            :scroll="{ x: 1260 }"
+            :scroll="{ x: 1520 }"
             row-key="id"
           >
             <template #columns>
@@ -124,7 +124,15 @@
               </a-table-column>
               <a-table-column title="来源任务" data-index="task_no" :width="175">
                 <template #cell="{ record }">
-                  <span class="number-text">{{ record.task_no || '—' }}</span>
+                  <span class="number-text">
+                    {{ record.task_nos?.join('、') || record.task_no || '—' }}
+                  </span>
+                </template>
+              </a-table-column>
+              <a-table-column title="任务完成" data-index="completed_task_count" :width="100" align="right">
+                <template #cell="{ record }">
+                  {{ formatNumber(record.completed_task_count) }} /
+                  {{ formatNumber(record.task_count) }} 个
                 </template>
               </a-table-column>
               <a-table-column title="审核条数" data-index="review_count" :width="100" align="right">
@@ -147,8 +155,16 @@
                 <template #cell="{ record }">
                   <sa-dict
                     :value="record.status"
-                    :dict="record.status === 'partial' ? 'settlement_batch_status' : 'withdrawal_settlement_status'"
+                    :dict="['partial', 'blocked'].includes(record.status) ? 'settlement_batch_status' : 'withdrawal_settlement_status'"
                   />
+                </template>
+              </a-table-column>
+              <a-table-column title="结算说明" data-index="settlement_block_reason" :width="260">
+                <template #cell="{ record }">
+                  <span v-if="record.settlement_block_reason" class="blocked-text">
+                    {{ record.settlement_block_reason }}
+                  </span>
+                  <span v-else>—</span>
                 </template>
               </a-table-column>
               <a-table-column title="任务完成时间" data-index="task_completed_at" :width="165" />
@@ -193,10 +209,14 @@ const taskDetailRef = ref()
 const batch = reactive({ task_settlements: [] })
 
 const canExport = computed(() =>
-  batch.task_settlements?.some((item) => item.status === 'pending')
+  batch.task_settlements?.some(
+    (item) => item.status === 'pending' && item.settlement_eligible
+  )
 )
 const canImport = computed(() =>
-  batch.task_settlements?.some((item) => ['exported', 'partial'].includes(item.status))
+  batch.task_settlements?.some(
+    (item) => item.settlement_eligible && ['exported', 'partial'].includes(item.status)
+  )
 )
 const descriptionColumns = computed(() => (window.innerWidth < 768 ? 1 : 2))
 
@@ -336,6 +356,12 @@ onMounted(loadDetail)
   color: var(--color-text-2);
   font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   font-size: 12px;
+}
+
+.blocked-text {
+  color: var(--color-text-3);
+  font-size: 12px;
+  line-height: 18px;
 }
 
 @media (max-width: 767px) {

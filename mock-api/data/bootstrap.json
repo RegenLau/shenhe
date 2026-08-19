@@ -336,6 +336,11 @@
         "label": "已结算",
         "value": "settled",
         "color": "green"
+      },
+      {
+        "label": "医生任务未完成",
+        "value": "blocked",
+        "color": "gray"
       }
     ],
     "notice_type": [

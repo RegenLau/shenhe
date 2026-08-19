@@ -1029,6 +1029,8 @@ function syncInitialWithdrawalAmounts(records = [], initialTaskItems = []) {
 function summarizeWithdrawals(records = []) {
   return records.reduce(
     (summary, withdrawal) => {
+      if (!getSettlementDoctorEligibility(withdrawal).eligible) return summary
+
       const amountCent = Number(withdrawal.amount_cent) || 0
       summary.total_count += 1
       summary.total_amount_cent += amountCent
@@ -1069,21 +1071,52 @@ function resolveSettlementBatchStatus(records = []) {
   return 'partial'
 }
 
+function getTaskBatchNo(task) {
+  if (!task) return ''
+  if (task.source_type === 'import' && task.import_batch_no) {
+    return String(task.import_batch_no).trim()
+  }
+  return String(task.task_batch_no || task.task_no || '').trim()
+}
+
+function getTaskBatchDoctorKey(task) {
+  return String(task?.doctor_id || task?.doctor_phone || task?.doctor_name || '')
+}
+
 function getWithdrawalTaskBatchNo(withdrawal) {
   const task = tasks.find((item) => item.id === withdrawal.source_task_id)
-  if (task?.source_type === 'import' && task.import_batch_no) {
-    return task.import_batch_no
+  return getTaskBatchNo(task) || withdrawal.source_task_no || withdrawal.task_batch_no || ''
+}
+
+function getSettlementDoctorEligibility(withdrawal) {
+  const task = tasks.find((item) => item.id === withdrawal?.source_task_id)
+  const batchNo = getWithdrawalTaskBatchNo(withdrawal)
+  const doctorKey = getTaskBatchDoctorKey(task) || getTaskBatchDoctorKey(withdrawal)
+  const doctorTasks = tasks.filter(
+    (item) => getTaskBatchNo(item) === batchNo && getTaskBatchDoctorKey(item) === doctorKey
+  )
+  const incompleteTasks = doctorTasks.filter(
+    (item) => taskProgressStatus(item) !== 'completed'
+  )
+
+  return {
+    eligible: doctorTasks.length > 0 && incompleteTasks.length === 0,
+    task_count: doctorTasks.length,
+    completed_task_count: doctorTasks.length - incompleteTasks.length,
+    task_ids: doctorTasks.map((item) => item.id),
+    task_nos: doctorTasks.map((item) => item.task_no).filter(Boolean),
+    incomplete_task_nos: incompleteTasks.map((item) => item.task_no).filter(Boolean)
   }
-  return task?.task_no || withdrawal.source_task_no || withdrawal.task_batch_no || ''
 }
 
 function buildSettlementTaskRows(records = []) {
   const groups = new Map()
 
   records.forEach((withdrawal) => {
-    const key = `${withdrawal.doctor_id}:${withdrawal.source_task_id}`
+    const key = getTaskBatchDoctorKey(withdrawal)
     const task = tasks.find((item) => item.id === withdrawal.source_task_id)
     const doctor = doctors.find((item) => item.id === withdrawal.doctor_id)
+    const eligibility = getSettlementDoctorEligibility(withdrawal)
     const row = groups.get(key) || {
       id: key,
       doctor_id: withdrawal.doctor_id,
@@ -1093,7 +1126,15 @@ function buildSettlementTaskRows(records = []) {
       department: doctor?.department || task?.department || null,
       task_id: withdrawal.source_task_id,
       task_no: withdrawal.source_task_no,
-      task_completed_at: task?.complete_time || null,
+      task_ids: eligibility.task_ids,
+      task_nos: eligibility.task_nos,
+      task_count: eligibility.task_count,
+      completed_task_count: eligibility.completed_task_count,
+      settlement_eligible: eligibility.eligible,
+      settlement_block_reason: eligibility.eligible
+        ? ''
+        : `当前医生还有 ${eligibility.incomplete_task_nos.length} 个任务未完成，不能部分结算`,
+      task_completed_at: eligibility.eligible ? task?.complete_time || null : null,
       bank_name: withdrawal.bank_name,
       bank_card_masked: maskBankCard(withdrawal.bank_card_no),
       settlement_detail_count: 0,
@@ -1116,7 +1157,9 @@ function buildSettlementTaskRows(records = []) {
   return [...groups.values()]
     .map(({ records: taskRecords, ...row }) => ({
       ...row,
-      status: resolveSettlementBatchStatus(taskRecords)
+      status: row.settlement_eligible ? resolveSettlementBatchStatus(taskRecords) : 'blocked',
+      accrued_amount_cent: row.amount_cent,
+      amount_cent: row.settlement_eligible ? row.amount_cent : 0
     }))
     .sort(
       (left, right) =>
@@ -1144,6 +1187,9 @@ function buildSettlementBatches(records = []) {
     const exportedTimes = batchRows.map((item) => item.export_time).filter(Boolean).sort()
     const settledTimes = batchRows.map((item) => item.settled_time).filter(Boolean).sort()
     const taskSettlements = buildSettlementTaskRows(batchRows)
+    const eligibleRows = batchRows.filter(
+      (item) => getSettlementDoctorEligibility(item).eligible
+    )
     const firstDate = dates[0] || ''
     const lastDate = dates.at(-1) || ''
 
@@ -1153,22 +1199,28 @@ function buildSettlementBatches(records = []) {
       display_title: `任务批次 ${batchNo}`,
       status: resolveSettlementBatchStatus(batchRows),
       doctor_count: new Set(batchRows.map((item) => item.doctor_id)).size,
-      task_count: taskSettlements.length,
+      task_count: taskSettlements.reduce(
+        (total, item) => total + Number(item.task_count || 0),
+        0
+      ),
       settlement_detail_count: batchRows.length,
-      review_count: batchRows.reduce(
+      eligible_doctor_count: taskSettlements.filter((item) => item.settlement_eligible).length,
+      blocked_doctor_count: taskSettlements.filter((item) => !item.settlement_eligible).length,
+      review_count: eligibleRows.reduce(
         (total, item) => total + (Number(item.source_review_count) || 0),
         0
       ),
-      total_amount_cent: batchRows.reduce(
+      total_amount_cent: eligibleRows.reduce(
         (total, item) => total + (Number(item.amount_cent) || 0),
         0
       ),
       period_start: firstDate || null,
       period_end: lastDate || null,
       created_at: batchRows.map((item) => item.apply_time).sort()[0] || null,
-      exported_at: exportedTimes.at(-1) || null,
+      exported_at:
+        eligibleRows.map((item) => item.export_time).filter(Boolean).sort().at(-1) || null,
       settled_at:
-        batchRows.every((item) => item.settlement_status === 'settled')
+        eligibleRows.length > 0 && eligibleRows.every((item) => item.settlement_status === 'settled')
           ? settledTimes.at(-1) || null
           : null,
       task_settlements: taskSettlements
@@ -1468,9 +1520,10 @@ function taskProgressStatus(task) {
 }
 
 function getTaskBatchKey(task) {
+  const batchNo = getTaskBatchNo(task)
   return task.source_type === 'import' && task.import_batch_no
-    ? `import:${task.import_batch_no}`
-    : `manual:${task.task_no}`
+    ? `import:${batchNo}`
+    : `manual:${batchNo}`
 }
 
 function summarizeTaskBatch(tasksInBatch, batchKey) {
@@ -1524,7 +1577,7 @@ function summarizeTaskBatch(tasksInBatch, batchKey) {
     new Set(organizationRows.map(organizationKey)).size > 1
   const sourceType = firstTask.source_type === 'import' ? 'import' : 'manual'
   const isImportBatch = sourceType === 'import' && Boolean(firstTask.import_batch_no)
-  const batchNo = isImportBatch ? firstTask.import_batch_no : firstTask.task_no
+  const batchNo = getTaskBatchNo(firstTask)
 
   return {
     id: batchKey,
@@ -3651,6 +3704,9 @@ app.post('/core/product/withdrawal/settlementImportPreview', (req, res) => {
     } else if (getWithdrawalTaskBatchNo(withdrawal) !== batchNo) {
       validationStatus = 'invalid'
       validationMessage = '该结算记录不属于当前批次，已跳过'
+    } else if (!getSettlementDoctorEligibility(withdrawal).eligible) {
+      validationStatus = 'invalid'
+      validationMessage = '该医生在当前批次仍有未完成任务，不能部分结算，已跳过'
     } else if (currentStatus === 'pending') {
       validationStatus = 'skipped'
       validationMessage = '当前仍为待导出，仅已导出记录可结算，已跳过'
@@ -3742,6 +3798,7 @@ app.post('/core/product/withdrawal/settlementImportConfirm', (req, res) => {
     if (
       !withdrawal ||
       getWithdrawalTaskBatchNo(withdrawal) !== preview.batch_no ||
+      !getSettlementDoctorEligibility(withdrawal).eligible ||
       withdrawal.settlement_status !== 'exported'
     ) {
       changedStateSkippedCount += 1
@@ -3795,6 +3852,7 @@ app.post('/core/product/withdrawal/export', (req, res) => {
     .filter(
       (withdrawal) =>
         getWithdrawalTaskBatchNo(withdrawal) === batchNo &&
+        getSettlementDoctorEligibility(withdrawal).eligible &&
         withdrawal.settlement_status === 'pending'
     )
     .sort(
