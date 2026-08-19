@@ -1069,6 +1069,14 @@ function resolveSettlementBatchStatus(records = []) {
   return 'partial'
 }
 
+function getWithdrawalTaskBatchNo(withdrawal) {
+  const task = tasks.find((item) => item.id === withdrawal.source_task_id)
+  if (task?.source_type === 'import' && task.import_batch_no) {
+    return task.import_batch_no
+  }
+  return task?.task_no || withdrawal.source_task_no || withdrawal.task_batch_no || ''
+}
+
 function buildSettlementTaskRows(records = []) {
   const groups = new Map()
 
@@ -1121,7 +1129,7 @@ function buildSettlementBatches(records = []) {
   const groups = new Map()
 
   records.forEach((withdrawal) => {
-    const batchNo = String(withdrawal.settlement_batch_no || '').trim()
+    const batchNo = String(getWithdrawalTaskBatchNo(withdrawal)).trim()
     if (!batchNo) return
     const batchRows = groups.get(batchNo) || []
     batchRows.push(withdrawal)
@@ -1142,9 +1150,7 @@ function buildSettlementBatches(records = []) {
     return {
       id: batchNo,
       batch_no: batchNo,
-      display_title: firstDate === lastDate
-        ? `${firstDate} 结算批次`
-        : `${firstDate} 至 ${lastDate} 结算批次`,
+      display_title: `任务批次 ${batchNo}`,
       status: resolveSettlementBatchStatus(batchRows),
       doctor_count: new Set(batchRows.map((item) => item.doctor_id)).size,
       task_count: taskSettlements.length,
@@ -1222,7 +1228,7 @@ function syncWithdrawalWorkbench() {
 
   const withdrawalTodo = {
     id: 'withdrawal_pending',
-    title: '结算批次待导出',
+    title: '任务批次待结算',
     description: `${withdrawalSummary.pending_count} 条任务结算记录待导出并提交基金会。`,
     count: withdrawalSummary.pending_count,
     level: 'warning'
@@ -3423,7 +3429,7 @@ app.get('/core/product/withdrawal/batch/index', (req, res) => {
   const limit = req.query.limit === undefined ? 10 : Number(req.query.limit)
 
   if (status && !settlementBatchStatuses.includes(status)) {
-    res.json(failure(422, '结算批次状态筛选值无效'))
+    res.json(failure(422, '任务批次结算状态筛选值无效'))
     return
   }
 
@@ -3466,7 +3472,7 @@ app.get('/core/product/withdrawal/batch/read', (req, res) => {
   const batchNo = String(req.query.batch_no || '').trim()
 
   if (!batchNo) {
-    res.json(failure(422, '请提供结算批次编号'))
+    res.json(failure(422, '请提供任务批次编号'))
     return
   }
 
@@ -3475,7 +3481,7 @@ app.get('/core/product/withdrawal/batch/read', (req, res) => {
   )
 
   if (!batch) {
-    res.json(failure(404, '未找到对应结算批次'))
+    res.json(failure(404, '未找到对应任务批次的结算记录'))
     return
   }
 
@@ -3550,7 +3556,7 @@ app.post('/core/product/withdrawal/settlementImportPreview', (req, res) => {
   const fileContent = String(req.body?.file_content || '')
 
   if (!batchNo) {
-    res.json(failure(422, '请先进入要回写的结算批次'))
+    res.json(failure(422, '请先进入要回写的任务批次'))
     return
   }
 
@@ -3558,7 +3564,7 @@ app.post('/core/product/withdrawal/settlementImportPreview', (req, res) => {
     (item) => item.batch_no === batchNo
   )
   if (!targetBatch) {
-    res.json(failure(404, '结算批次不存在，请返回列表后重试'))
+    res.json(failure(404, '任务批次不存在或暂无结算记录，请返回列表后重试'))
     return
   }
 
@@ -3642,7 +3648,7 @@ app.post('/core/product/withdrawal/settlementImportPreview', (req, res) => {
     } else if (!withdrawal) {
       validationStatus = 'invalid'
       validationMessage = '系统中不存在该结算记录，已跳过'
-    } else if (withdrawal.settlement_batch_no !== batchNo) {
+    } else if (getWithdrawalTaskBatchNo(withdrawal) !== batchNo) {
       validationStatus = 'invalid'
       validationMessage = '该结算记录不属于当前批次，已跳过'
     } else if (currentStatus === 'pending') {
@@ -3735,7 +3741,7 @@ app.post('/core/product/withdrawal/settlementImportConfirm', (req, res) => {
 
     if (
       !withdrawal ||
-      withdrawal.settlement_batch_no !== preview.batch_no ||
+      getWithdrawalTaskBatchNo(withdrawal) !== preview.batch_no ||
       withdrawal.settlement_status !== 'exported'
     ) {
       changedStateSkippedCount += 1
@@ -3773,7 +3779,7 @@ app.post('/core/product/withdrawal/export', (req, res) => {
   const batchNo = String(req.body?.batch_no || '').trim()
 
   if (!batchNo) {
-    res.json(failure(422, '请提供要导出的结算批次'))
+    res.json(failure(422, '请提供要导出的任务批次'))
     return
   }
 
@@ -3781,14 +3787,14 @@ app.post('/core/product/withdrawal/export', (req, res) => {
     (item) => item.batch_no === batchNo
   )
   if (!batch) {
-    res.json(failure(404, '结算批次不存在，请返回列表后重试'))
+    res.json(failure(404, '任务批次不存在或暂无结算记录，请返回列表后重试'))
     return
   }
 
   const pendingWithdrawals = withdrawals
     .filter(
       (withdrawal) =>
-        withdrawal.settlement_batch_no === batchNo &&
+        getWithdrawalTaskBatchNo(withdrawal) === batchNo &&
         withdrawal.settlement_status === 'pending'
     )
     .sort(
@@ -3804,7 +3810,7 @@ app.post('/core/product/withdrawal/export', (req, res) => {
   const exportTime = formatDateTime()
   const rows = [
     [
-      '结算批次',
+      '任务批次编号',
       '结算单号',
       '记录时间',
       '姓名',

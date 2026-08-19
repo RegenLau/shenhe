@@ -3,12 +3,12 @@
     <header class="page-header">
       <div>
         <h1>结算管理</h1>
-        <p>按结算批次查看整体进度，进入批次后处理每位医生的任务结算</p>
+        <p>按任务批次查看结算进度，进入批次后处理每位医生的任务结算</p>
       </div>
     </header>
 
     <a-alert type="info" show-icon>
-      首页仅展示结算批次。点击“批次详情”查看该批次下的医生、来源任务、结算积分及收款信息。
+      结算与任务管理使用同一批次编号。点击“批次详情”查看该任务批次下的医生、来源任务、结算积分及收款信息。
     </a-alert>
 
     <a-alert v-if="summaryError" type="error" show-icon>
@@ -19,11 +19,11 @@
     </a-alert>
 
     <a-spin :loading="summaryLoading" class="summary-loading">
-      <section class="summary-grid" aria-label="结算批次统计">
+      <section class="summary-grid" aria-label="任务批次结算统计">
         <article class="metric-card">
-          <span>结算批次</span>
+          <span>任务批次</span>
           <strong>{{ summaryLoaded ? formatNumber(summary.total_batch_count) : '—' }}</strong>
-          <small>当前全部批次</small>
+          <small>当前有结算记录的任务批次</small>
         </article>
         <article class="metric-card">
           <span>待导出批次</span>
@@ -61,10 +61,10 @@
     >
       <template #tableSearch>
         <a-col :xs="24" :sm="12">
-          <a-form-item field="keyword" label="批次或医生">
+          <a-form-item field="keyword" label="任务批次">
             <a-input
               v-model="searchForm.keyword"
-              placeholder="批次编号、医生姓名或任务编号"
+              placeholder="任务批次编号、医生姓名或任务编号"
               allow-clear
             />
           </a-form-item>
@@ -195,7 +195,7 @@ const options = reactive({
 })
 
 const columns = reactive([
-  { title: '批次编号', dataIndex: 'batch_no', width: 210, fixed: 'left' },
+  { title: '任务批次编号', dataIndex: 'batch_no', width: 210, fixed: 'left' },
   {
     title: '批次状态',
     dataIndex: 'status',

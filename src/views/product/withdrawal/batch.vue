@@ -7,7 +7,7 @@
           返回结算管理
         </a-button>
         <div class="header-title">
-          <h1>{{ batch.display_title || '结算批次详情' }}</h1>
+          <h1>{{ batch.display_title || '任务批次结算' }}</h1>
           <p>{{ batch.batch_no || '—' }} · 查看每位医生的任务结算</p>
         </div>
       </div>
@@ -34,7 +34,7 @@
     <a-result
       v-if="!loading && errorMessage"
       status="error"
-      title="结算批次加载失败"
+      title="任务批次结算加载失败"
       :subtitle="errorMessage"
     >
       <template #extra>
@@ -45,7 +45,7 @@
     <a-spin v-else :loading="loading" class="batch-content">
       <template v-if="batch.batch_no">
         <a-alert type="info" show-icon>
-          平台仅整理并导出当前批次，不进行审批或打款。基金会完成结算后，请在本批次导入已结算名单回写状态。
+          当前结算范围与任务管理中的同编号批次一致。平台仅整理并导出当前任务批次，基金会完成结算后，请在本批次导入名单回写状态。
         </a-alert>
 
         <a-row :gutter="[16, 16]" class="summary-grid">
@@ -230,14 +230,14 @@ const exportBatch = async () => {
   try {
     const response = await withdrawalApi.exportBatch(batchNo)
     if (response?.status !== 200) {
-      Message.error('结算批次导出失败，请稍后重试')
+      Message.error('任务批次结算名单导出失败，请稍后重试')
       return
     }
     tool.download(response)
-    Message.success('结算批次名单已导出')
+    Message.success('任务批次结算名单已导出')
     await loadDetail()
   } catch {
-    Message.error('结算批次导出失败，请检查网络后重试')
+    Message.error('任务批次结算名单导出失败，请检查网络后重试')
   } finally {
     exporting.value = false
   }
@@ -245,7 +245,7 @@ const exportBatch = async () => {
 
 const confirmExport = () => {
   Modal.confirm({
-    title: '确认导出当前结算批次',
+    title: '确认导出当前任务批次的结算名单',
     content: '导出文件包含医生身份证号、银行卡号等敏感信息，仅限交付基金会线下结算，请妥善保管。',
     width: 'min(420px, calc(100vw - 32px))',
     okText: '确认导出',

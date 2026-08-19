@@ -2,7 +2,7 @@
   {
     "id": 1,
     "withdrawal_no": "TX202607160001",
-    "settlement_batch_no": "JS20260716001",
+    "task_batch_no": "DR20260710001",
     "doctor_id": 6,
     "doctor_name": "刘芳",
     "doctor_phone": "13800138006",
@@ -21,7 +21,7 @@
   {
     "id": 2,
     "withdrawal_no": "TX202607160002",
-    "settlement_batch_no": "JS20260717001",
+    "task_batch_no": "DR20260710001",
     "doctor_id": 6,
     "doctor_name": "刘芳",
     "doctor_phone": "13800138006",
@@ -39,7 +39,7 @@
   {
     "id": 3,
     "withdrawal_no": "TX202607170003",
-    "settlement_batch_no": "JS20260718001",
+    "task_batch_no": "RW202607230007",
     "doctor_id": 7,
     "doctor_name": "周磊",
     "doctor_phone": "13800138007",
@@ -57,7 +57,7 @@
   {
     "id": 4,
     "withdrawal_no": "TX202607180004",
-    "settlement_batch_no": "JS20260723001",
+    "task_batch_no": "DR20260710001",
     "doctor_id": 6,
     "doctor_name": "刘芳",
     "doctor_phone": "13800138006",
@@ -75,7 +75,7 @@
   {
     "id": 5,
     "withdrawal_no": "TX202607180005",
-    "settlement_batch_no": "JS20260723001",
+    "task_batch_no": "RW202607230007",
     "doctor_id": 7,
     "doctor_name": "周磊",
     "doctor_phone": "13800138007",
@@ -93,7 +93,7 @@
   {
     "id": 6,
     "withdrawal_no": "TX202607190006",
-    "settlement_batch_no": "JS20260723001",
+    "task_batch_no": "RW202607230007",
     "doctor_id": 7,
     "doctor_name": "周磊",
     "doctor_phone": "13800138007",
@@ -111,7 +111,7 @@
   {
     "id": 7,
     "withdrawal_no": "TX202607190007",
-    "settlement_batch_no": "JS20260723001",
+    "task_batch_no": "RW202607230007",
     "doctor_id": 7,
     "doctor_name": "周磊",
     "doctor_phone": "13800138007",
@@ -129,7 +129,7 @@
   {
     "id": 8,
     "withdrawal_no": "TX202607200008",
-    "settlement_batch_no": "JS20260723001",
+    "task_batch_no": "RW202607230007",
     "doctor_id": 7,
     "doctor_name": "周磊",
     "doctor_phone": "13800138007",
@@ -147,7 +147,7 @@
   {
     "id": 9,
     "withdrawal_no": "TX202607200009",
-    "settlement_batch_no": "JS20260723001",
+    "task_batch_no": "DR20260712001",
     "doctor_id": 8,
     "doctor_name": "孙倩",
     "doctor_phone": "13800138008",
@@ -165,7 +165,7 @@
   {
     "id": 10,
     "withdrawal_no": "TX202607210010",
-    "settlement_batch_no": "JS20260723001",
+    "task_batch_no": "DR20260712001",
     "doctor_id": 8,
     "doctor_name": "孙倩",
     "doctor_phone": "13800138008",
@@ -183,7 +183,7 @@
   {
     "id": 11,
     "withdrawal_no": "TX202607220011",
-    "settlement_batch_no": "JS20260723001",
+    "task_batch_no": "DR20260712001",
     "doctor_id": 8,
     "doctor_name": "孙倩",
     "doctor_phone": "13800138008",
