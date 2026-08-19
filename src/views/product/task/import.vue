@@ -16,9 +16,9 @@
 
     <section v-if="currentStep === 1" class="step-content">
       <a-alert type="info" show-icon>
-        模板需填写医生姓名、手机号、任务积分和创建日期（如
+        模板需填写基金会名称、项目名称、项目标识、医生姓名、手机号、任务积分和创建日期（如
         2026-08-05）。系统会从题库随机匹配 100 / 200 / 300
-        积分题目，精确组成每行任务积分；同一医生同一创建日期不能重复导入。
+        积分题目，精确组成每行任务积分；同一医生同一创建日期不能重复导入；基金会、项目和项目标识须与「组织管理」中维护的层级一致。
       </a-alert>
 
       <a-upload
@@ -41,6 +41,9 @@
       <div class="template-fields">
         <h3>模板字段</h3>
         <div class="field-list">
+          <span>基金会名称</span>
+          <span>项目名称</span>
+          <span>项目标识</span>
           <span>医生姓名</span>
           <span>手机号</span>
           <span>任务积分</span>
@@ -103,11 +106,26 @@
         :data="preview.rows"
         :pagination="false"
         :bordered="{ wrapper: true, cell: false }"
-        :scroll="{ x: 1160 }"
+        :scroll="{ x: 1560 }"
         row-key="row_no"
       >
         <template #columns>
           <a-table-column title="行号" data-index="row_no" :width="70" />
+          <a-table-column title="基金会" data-index="foundation_name" :width="170">
+            <template #cell="{ record }">
+              {{ record.foundation_name || '—' }}
+            </template>
+          </a-table-column>
+          <a-table-column title="项目" data-index="project_name" :width="150">
+            <template #cell="{ record }">
+              {{ record.project_name || '—' }}
+            </template>
+          </a-table-column>
+          <a-table-column title="项目标识" data-index="identifier_name" :width="150">
+            <template #cell="{ record }">
+              {{ record.identifier_name || '—' }}
+            </template>
+          </a-table-column>
           <a-table-column title="医生姓名" data-index="doctor_name" :width="110" />
           <a-table-column title="手机号" data-index="doctor_phone" :width="130" />
           <a-table-column title="创建日期" data-index="create_date" :width="120">

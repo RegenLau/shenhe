@@ -3,12 +3,12 @@
     <header class="page-header">
       <div>
         <h1>任务管理</h1>
-        <p>统一创建、分配和查看医生审核任务</p>
+        <p>按导入批次查看任务汇总，进入批次后查看每位医生的审核进度</p>
       </div>
     </header>
 
     <a-alert type="info" show-icon class="assignment-tip">
-      创建或导入任务后，系统会根据目标积分从题库随机精确匹配 100 / 200 / 300 积分题目，不预设等级比例。
+      任务管理首页默认展示名单导入批次。点击“批次详情”查看该批次所有医生的进度，并可下载进度数据；如需查看手工创建任务，可在“创建方式”中切换。
     </a-alert>
 
     <a-alert v-if="tableError" type="error" show-icon class="table-error">
@@ -19,6 +19,7 @@
     </a-alert>
 
     <sa-table
+      v-show="!tableError"
       ref="crudRef"
       :options="options"
       :columns="columns"
@@ -27,21 +28,11 @@
       @reset-search="resetSearchForm"
     >
       <template #tableSearch>
-        <a-col :xs="24" :sm="8">
-          <a-form-item field="keyword" label="任务或医生">
+        <a-col :xs="24" :sm="12">
+          <a-form-item field="keyword" label="批次或项目">
             <a-input
               v-model="searchForm.keyword"
-              placeholder="任务编号、姓名或手机号"
-              allow-clear
-            />
-          </a-form-item>
-        </a-col>
-        <a-col :xs="24" :sm="8">
-          <a-form-item field="status" label="任务状态">
-            <sa-select
-              v-model="searchForm.status"
-              dict="task_status"
-              placeholder="全部状态"
+              placeholder="批次编号、基金会、项目或项目标识"
               allow-clear
             />
           </a-form-item>
@@ -59,23 +50,28 @@
       </template>
 
       <template #tableAfterButtons>
+        <a-button type="primary" @click="createRef?.open()">
+          <template #icon><icon-plus /></template>
+          创建任务
+        </a-button>
         <a-button @click="importRef?.open()">
           <template #icon><icon-upload /></template>
           导入名单并创建
         </a-button>
       </template>
 
-      <template #doctor_name="{ record }">
-        <div class="doctor-cell">
-          <div class="doctor-name">
-            <span>{{ record.doctor_name }}</span>
-            <sa-dict
-              :value="record.account_status"
-              dict="doctor_account_status"
-            />
-          </div>
-          <span>
-            {{ maskPhone(record.doctor_phone) }} · {{ record.department || '执业信息待补充' }}
+      <template #batch_no="{ record }">
+        <div class="batch-cell">
+          <strong>{{ record.batch_no || '—' }}</strong>
+          <span>{{ record.display_title || '—' }}</span>
+        </div>
+      </template>
+
+      <template #identifier_name="{ record }">
+        <div class="org-cell">
+          <span class="org-identifier">{{ record.identifier_name || '—' }}</span>
+          <span class="org-path">
+            {{ record.foundation_name || '—' }} · {{ record.project_name || '—' }}
           </span>
         </div>
       </template>
@@ -84,18 +80,22 @@
         <div class="progress-cell">
           <div>
             <span>{{ formatNumber(record.completed_count) }}</span>
-            <span class="progress-total"> / {{ formatNumber(record.item_count) }} 条</span>
+            <span class="progress-total"> / {{ formatNumber(record.item_count) }} 题</span>
           </div>
           <a-progress
-            :percent="getProgress(record)"
+            :percent="Number(record.progress_percent || 0)"
             :show-text="false"
             size="small"
           />
         </div>
       </template>
 
-      <template #item_count="{ record }">
-        <span>{{ formatNumber(record.item_count) }} 条</span>
+      <template #doctor_count="{ record }">
+        <span>{{ formatNumber(record.doctor_count) }} 位</span>
+      </template>
+
+      <template #task_count="{ record }">
+        <span>{{ formatNumber(record.task_count) }} 个</span>
       </template>
 
       <template #total_reward_cent="{ record }">
@@ -105,48 +105,40 @@
 
     <create-task ref="createRef" @success="refresh" />
     <import-task ref="importRef" @success="refresh" />
-    <task-detail ref="detailRef" />
   </div>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import taskApi from '@/api/product/task'
 import CreateTask from './create.vue'
 import ImportTask from './import.vue'
-import TaskDetail from './view.vue'
 
 const crudRef = ref()
 const createRef = ref()
 const importRef = ref()
-const detailRef = ref()
 const tableError = ref('')
+const router = useRouter()
 
 const searchForm = ref({
   keyword: '',
-  status: '',
-  source_type: ''
+  source_type: 'import'
 })
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
 const formatPoints = (value) => `${formatNumber(Number(value || 0) / 100)} 积分`
-const maskPhone = (value) => String(value || '').replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2')
-
-const getProgress = (record) => {
-  if (!record.item_count) return 0
-  return Math.min(Number(record.completed_count || 0) / Number(record.item_count), 1)
-}
 
 const loadList = async (params) => {
   try {
-    const response = await taskApi.getPageList(params)
+    const response = await taskApi.getBatchList(params)
     if (response.code === 200) {
       tableError.value = ''
       return response
     }
-    tableError.value = response.message || '任务列表加载失败，请重新加载'
+    tableError.value = response.message || '任务批次加载失败，请重新加载'
   } catch {
-    tableError.value = '任务列表加载失败，请检查网络后重试'
+    tableError.value = '任务批次加载失败，请检查网络后重试'
   }
 
   return {
@@ -156,39 +148,43 @@ const loadList = async (params) => {
   }
 }
 
+const openBatch = (record) => {
+  router.push({
+    name: 'productTaskBatch',
+    params: { batchKey: record.batch_key || record.id || '' }
+  })
+}
+
 const options = reactive({
   api: loadList,
   pageLayout: 'normal',
   showSort: false,
-  operationColumnWidth: 90,
+  operationColumnWidth: 110,
   view: {
     show: true,
-    text: '详情',
-    func: (record) => detailRef.value?.open(record.id)
-  },
-  add: {
-    show: true,
-    text: '创建任务',
-    func: () => createRef.value?.open()
+    text: '批次详情',
+    func: openBatch
   }
 })
 
 const columns = reactive([
-  { title: '任务编号', dataIndex: 'task_no', width: 160, fixed: 'left' },
-  { title: '医生', dataIndex: 'doctor_name', width: 180 },
+  { title: '批次编号', dataIndex: 'batch_no', width: 190, fixed: 'left' },
+  { title: '项目归属', dataIndex: 'identifier_name', width: 220 },
+  { title: '医生数', dataIndex: 'doctor_count', width: 90, align: 'right' },
+  { title: '任务数', dataIndex: 'task_count', width: 90, align: 'right' },
+  { title: '完成进度', dataIndex: 'progress', width: 180 },
   {
-    title: '任务状态',
+    title: '批次状态',
     dataIndex: 'status',
     type: 'dict',
     dict: 'task_status',
-    width: 95,
+    width: 100,
     align: 'center'
   },
-  { title: '完成进度', dataIndex: 'progress', width: 160 },
-  { title: '任务题数', dataIndex: 'item_count', width: 90, align: 'right' },
+  { title: '任务题数', dataIndex: 'item_count', width: 100, align: 'right' },
   { title: '任务积分', dataIndex: 'total_reward_cent', width: 110, align: 'right' },
   {
-    title: '创建方式',
+    title: '批次来源',
     dataIndex: 'source_type',
     type: 'dict',
     dict: 'task_source',
@@ -202,8 +198,7 @@ const refresh = () => crudRef.value?.refresh()
 const resetSearchForm = () => {
   Object.assign(searchForm.value, {
     keyword: '',
-    status: '',
-    source_type: ''
+    source_type: 'import'
   })
 }
 
@@ -249,31 +244,45 @@ onMounted(refresh)
   min-width: 0;
 }
 
-.doctor-cell {
+.batch-cell,
+.org-cell {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 4px;
 
-  > span {
+  span,
+  strong {
     overflow: hidden;
-    color: var(--color-text-3);
-    font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 }
 
-.doctor-name {
-  display: flex;
-  align-items: center;
-  gap: 8px;
+.batch-cell {
+  strong {
+    color: var(--color-text-1);
+    font-weight: 600;
+  }
+
+  span {
+    color: var(--color-text-3);
+    font-size: 12px;
+  }
+}
+
+.org-identifier {
   color: var(--color-text-1);
   font-weight: 500;
 }
 
+.org-path {
+  color: var(--color-text-3);
+  font-size: 12px;
+}
+
 .progress-cell {
-  min-width: 130px;
+  min-width: 150px;
   color: var(--color-text-1);
   font-size: 13px;
 

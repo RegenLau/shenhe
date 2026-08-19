@@ -49,6 +49,23 @@
         />
       </a-form-item>
 
+      <a-form-item
+        v-if="formData.type === 'project'"
+        field="disclosure_document_url"
+        label="公示文档"
+      >
+        <div class="document-upload">
+          <sa-upload-file
+            v-model="formData.disclosure_document_url"
+            accept=".pdf,application/pdf"
+            :size="10 * 1024 * 1024"
+            title="上传公示文档"
+            @update:model-value="handleDocumentChange"
+          />
+          <span class="document-help">仅支持单个 PDF 文件，大小不超过 10 MB</span>
+        </div>
+      </a-form-item>
+
       <a-form-item field="status" label="状态">
         <sa-radio v-model="formData.status" dict="data_status" />
       </a-form-item>
@@ -91,6 +108,7 @@ const initialFormData = {
   code: '',
   status: '1',
   remark: '',
+  disclosure_document_url: '',
   foundation_id: undefined,
   project_id: undefined,
   foundation_name: '',
@@ -108,9 +126,19 @@ const rules = computed(() => ({
     { maxLength: 80, message: `${typeLabel.value}名称不能超过 80 个字符` }
   ],
   code: [{ maxLength: 40, message: `${typeLabel.value}编码不能超过 40 个字符` }],
+  disclosure_document_url:
+    formData.type === 'project'
+      ? [{ required: true, message: '请上传 PDF 格式的公示文档' }]
+      : [],
   status: [{ required: true, message: '请选择状态' }],
   remark: [{ maxLength: 200, message: '备注不能超过 200 个字符' }]
 }))
+
+const handleDocumentChange = (value) => {
+  if (value) {
+    formRef.value?.clearValidate('disclosure_document_url')
+  }
+}
 
 const open = async (openMode = 'add', type = 'foundation', parent = null, record = null) => {
   mode.value = openMode
@@ -156,6 +184,7 @@ const submit = async (done) => {
     }
     if (formData.type === 'project') {
       payload.foundation_id = formData.foundation_id
+      payload.disclosure_document_url = formData.disclosure_document_url
     }
     if (formData.type === 'identifier') {
       payload.project_id = formData.project_id
@@ -191,5 +220,17 @@ defineExpose({ open })
 <style scoped lang="less">
 .parent-name {
   color: var(--color-text-2);
+}
+
+.document-upload {
+  width: 100%;
+}
+
+.document-help {
+  display: block;
+  margin-top: 4px;
+  color: var(--color-text-3);
+  font-size: 12px;
+  line-height: 20px;
 }
 </style>

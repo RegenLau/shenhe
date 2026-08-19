@@ -60,6 +60,15 @@
             <a-descriptions-item label="任务编号">
               {{ detail.task_no }}
             </a-descriptions-item>
+            <a-descriptions-item label="所属基金会">
+              {{ detail.foundation_name || '—' }}
+            </a-descriptions-item>
+            <a-descriptions-item label="所属项目">
+              {{ detail.project_name || '—' }}
+            </a-descriptions-item>
+            <a-descriptions-item label="项目标识">
+              {{ detail.identifier_name || '—' }}
+            </a-descriptions-item>
             <a-descriptions-item label="医生">
               {{ detail.doctor_name }}
             </a-descriptions-item>

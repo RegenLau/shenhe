@@ -42,6 +42,7 @@ const doctorCertificationStatuses = [
 const doctorCertificateTypes = ['医师资格证', '医师执业证书']
 const doctorConfigTypes = ['hospital', 'department', 'position']
 const questionLifecycleStatuses = ['draft', 'available', 'disabled']
+const disclosureDocumentMaxSize = 10 * 1024 * 1024
 const doctorConfigTypeLabels = {
   hospital: '医院',
   department: '科室',
@@ -84,6 +85,26 @@ const projectOrgRows = {
   project: projectOrgFixture.projects.map((item) => ({ ...item })),
   identifier: projectOrgFixture.identifiers.map((item) => ({ ...item }))
 }
+const disclosureDocuments = new Map()
+const disclosureDocumentsByFileId = new Map()
+projectOrgRows.project.forEach((project) => {
+  if (!project.disclosure_document_url) return
+  const fileId = String(project.disclosure_document_url).match(
+    /\/disclosures\/([^/]+)\//
+  )?.[1]
+  if (!fileId) return
+
+  const document = {
+    file_id: fileId,
+    url: project.disclosure_document_url,
+    name: project.disclosure_document_name,
+    size: project.disclosure_document_size,
+    upload_time: project.disclosure_document_upload_time,
+    buffer: null
+  }
+  disclosureDocuments.set(document.url, document)
+  disclosureDocumentsByFileId.set(fileId, document)
+})
 const questionBankPath = fileURLToPath(
   new URL('../data/question-bank.json', import.meta.url)
 )
@@ -255,6 +276,21 @@ function normalizeProjectOrgPayload(payload = {}) {
       return { error: '所属基金会不存在或已删除，请刷新后重试' }
     }
     data.foundation_id = foundationId
+
+    const disclosureDocumentUrl = String(
+      payload.disclosure_document_url || ''
+    ).trim()
+    if (!disclosureDocumentUrl) {
+      return { error: '请上传 PDF 格式的公示文档' }
+    }
+    const disclosureDocument = disclosureDocuments.get(disclosureDocumentUrl)
+    if (!disclosureDocument) {
+      return { error: '公示文档不存在或已失效，请重新上传 PDF 文件' }
+    }
+    data.disclosure_document_url = disclosureDocument.url
+    data.disclosure_document_name = disclosureDocument.name
+    data.disclosure_document_size = disclosureDocument.size
+    data.disclosure_document_upload_time = disclosureDocument.upload_time
   }
 
   if (type === 'identifier') {
@@ -339,6 +375,89 @@ function enrichProjectOrgRow(type, item) {
   }
 }
 
+function parseMultipartFile(body, contentType = '') {
+  const boundaryMatch = String(contentType).match(
+    /boundary=(?:"([^"]+)"|([^;]+))/i
+  )
+  const boundary = boundaryMatch?.[1] || boundaryMatch?.[2]
+  if (!boundary || !Buffer.isBuffer(body)) return null
+
+  const delimiter = Buffer.from(`--${boundary}`)
+  let partStart = body.indexOf(delimiter)
+
+  while (partStart >= 0) {
+    partStart += delimiter.length
+    if (body.subarray(partStart, partStart + 2).toString() === '--') break
+    if (body.subarray(partStart, partStart + 2).toString() === '\r\n') {
+      partStart += 2
+    }
+
+    const nextBoundary = body.indexOf(delimiter, partStart)
+    if (nextBoundary < 0) break
+    const partEnd =
+      body.subarray(nextBoundary - 2, nextBoundary).toString() === '\r\n'
+        ? nextBoundary - 2
+        : nextBoundary
+    const part = body.subarray(partStart, partEnd)
+    const headerEnd = part.indexOf(Buffer.from('\r\n\r\n'))
+
+    if (headerEnd >= 0) {
+      const headers = part.subarray(0, headerEnd).toString('utf8')
+      const disposition = headers.match(/content-disposition:([^\r\n]+)/i)?.[1] || ''
+      const fieldName = disposition.match(/name="([^"]+)"/i)?.[1]
+      const fileName = disposition.match(/filename="([^"]*)"/i)?.[1]
+
+      if (fieldName === 'file' && fileName) {
+        return {
+          name: fileName,
+          mime_type:
+            headers.match(/content-type:\s*([^\r\n]+)/i)?.[1]?.trim() || '',
+          buffer: part.subarray(headerEnd + 4)
+        }
+      }
+    }
+
+    partStart = nextBoundary
+  }
+
+  return null
+}
+
+function safeDisclosureFileName(fileName = '') {
+  return String(fileName)
+    .split(/[\\/]/)
+    .pop()
+    .replace(/[\u0000-\u001f<>:"|?*]/g, '-')
+    .trim()
+}
+
+function buildMockDisclosurePdf() {
+  const stream =
+    'BT\n/F1 18 Tf\n72 760 Td\n(Mock public disclosure document) Tj\nET\n'
+  const objects = [
+    '1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n',
+    '2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n',
+    '3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n',
+    '4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n',
+    `5 0 obj\n<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}endstream\nendobj\n`
+  ]
+  let content = '%PDF-1.4\n'
+  const offsets = [0]
+  objects.forEach((object) => {
+    offsets.push(Buffer.byteLength(content))
+    content += object
+  })
+  const xrefOffset = Buffer.byteLength(content)
+  content += `xref\n0 ${objects.length + 1}\n`
+  content += '0000000000 65535 f \n'
+  offsets.slice(1).forEach((offset) => {
+    content += `${String(offset).padStart(10, '0')} 00000 n \n`
+  })
+  content += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\n`
+  content += `startxref\n${xrefOffset}\n%%EOF\n`
+  return Buffer.from(content)
+}
+
 function buildProjectOrgTree() {
   const identifierNodesOf = (projectId) =>
     projectOrgRows.identifier
@@ -377,6 +496,52 @@ function buildProjectOrgTree() {
       }))
     }
   ]
+}
+
+function resolveTaskOrgChain(identifierId) {
+  const identifier = projectOrgRows.identifier.find(
+    (row) => row.id === Number(identifierId)
+  )
+  if (!identifier) return null
+
+  const project = projectOrgRows.project.find(
+    (row) => row.id === identifier.project_id
+  )
+  const foundation = project
+    ? projectOrgRows.foundation.find((row) => row.id === project.foundation_id)
+    : undefined
+  if (!project || !foundation) return null
+
+  return { foundation, project, identifier }
+}
+
+function taskOrgDisabledError({ foundation, project, identifier }) {
+  if (foundation.status === '2') return '所选基金会已停用，请先启用或更换基金会'
+  if (project.status === '2') return '所选项目已停用，请先启用或更换项目'
+  if (identifier.status === '2') return '所选项目标识已停用，请先启用或更换标识'
+  return ''
+}
+
+function buildTaskOrgOptions() {
+  return projectOrgRows.foundation.map((foundation) => ({
+    id: foundation.id,
+    name: foundation.name,
+    status: foundation.status,
+    projects: projectOrgRows.project
+      .filter((project) => project.foundation_id === foundation.id)
+      .map((project) => ({
+        id: project.id,
+        name: project.name,
+        status: project.status,
+        identifiers: projectOrgRows.identifier
+          .filter((identifier) => identifier.project_id === project.id)
+          .map((identifier) => ({
+            id: identifier.id,
+            name: identifier.name,
+            status: identifier.status
+          }))
+      }))
+  }))
 }
 
 function buildDoctors(fixture = {}) {
@@ -1124,6 +1289,9 @@ function buildPricingSummary(levelSummary = {}) {
 function hydrateTask(task, options = {}) {
   const includeItems = options?.includeItems === true
   const doctor = doctors.find((item) => item.id === task.doctor_id)
+  const orgChain = task.identifier_id
+    ? resolveTaskOrgChain(task.identifier_id)
+    : null
   const hydrated = {
     ...task,
     pricing_version: task.pricing_version || 'V5.0',
@@ -1133,7 +1301,10 @@ function hydrateTask(task, options = {}) {
     doctor_phone: doctor?.phone || task.doctor_phone,
     hospital: doctor?.hospital || task.hospital,
     department: doctor?.department || task.department,
-    account_status: doctor?.account_status || task.account_status
+    account_status: doctor?.account_status || task.account_status,
+    foundation_name: orgChain ? orgChain.foundation.name : '',
+    project_name: orgChain ? orgChain.project.name : '',
+    identifier_name: orgChain ? orgChain.identifier.name : ''
   }
 
   if (task.level_summary) {
@@ -1147,6 +1318,194 @@ function hydrateTask(task, options = {}) {
   }
 
   return hydrated
+}
+
+function taskProgressStatus(task) {
+  const itemCount = Math.max(Number(task.item_count) || 0, 0)
+  const completedCount = Math.min(
+    Math.max(Number(task.completed_count) || 0, 0),
+    itemCount
+  )
+  if (itemCount > 0 && completedCount >= itemCount) return 'completed'
+  if (completedCount > 0) return 'in_progress'
+  return 'pending'
+}
+
+function getTaskBatchKey(task) {
+  return task.source_type === 'import' && task.import_batch_no
+    ? `import:${task.import_batch_no}`
+    : `manual:${task.task_no}`
+}
+
+function summarizeTaskBatch(tasksInBatch, batchKey) {
+  const hydratedTasks = tasksInBatch.map(hydrateTask)
+  const firstTask = hydratedTasks[0] || {}
+  const itemCount = hydratedTasks.reduce(
+    (total, task) => total + Math.max(Number(task.item_count) || 0, 0),
+    0
+  )
+  const completedCount = hydratedTasks.reduce(
+    (total, task) =>
+      total +
+      Math.min(
+        Math.max(Number(task.completed_count) || 0, 0),
+        Math.max(Number(task.item_count) || 0, 0)
+      ),
+    0
+  )
+  const statusSummary = { pending: 0, in_progress: 0, completed: 0 }
+  hydratedTasks.forEach((task) => {
+    statusSummary[taskProgressStatus(task)] += 1
+  })
+  const doctorKeys = new Set(
+    hydratedTasks.map((task) => String(task.doctor_id || task.doctor_phone || task.doctor_name))
+  )
+  const createTime = hydratedTasks
+    .map((task) => task.create_time)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || null
+  const organizationRows = hydratedTasks
+    .map((task) => ({
+      foundation_name: task.foundation_name || '',
+      project_name: task.project_name || '',
+      identifier_name: task.identifier_name || ''
+    }))
+    .filter(
+      (organization) =>
+        organization.foundation_name ||
+        organization.project_name ||
+        organization.identifier_name
+    )
+  const firstOrganization = organizationRows[0] || {}
+  const organizationKey = (organization) =>
+    [
+      organization.foundation_name,
+      organization.project_name,
+      organization.identifier_name
+    ].join('|')
+  const hasMultipleOrganizations =
+    new Set(organizationRows.map(organizationKey)).size > 1
+  const sourceType = firstTask.source_type === 'import' ? 'import' : 'manual'
+  const isImportBatch = sourceType === 'import' && Boolean(firstTask.import_batch_no)
+  const batchNo = isImportBatch ? firstTask.import_batch_no : firstTask.task_no
+
+  return {
+    id: batchKey,
+    batch_key: batchKey,
+    batch_no: batchNo,
+    display_title: isImportBatch ? `名单导入批次 ${batchNo}` : `手工任务 ${batchNo}`,
+    source_type: sourceType,
+    import_date: isImportBatch ? firstTask.import_date || null : null,
+    foundation_name: hasMultipleOrganizations
+      ? '多个基金会'
+      : firstOrganization.foundation_name || '',
+    project_name: hasMultipleOrganizations
+      ? '多个项目'
+      : firstOrganization.project_name || '',
+    identifier_name: hasMultipleOrganizations
+      ? '多个项目标识'
+      : firstOrganization.identifier_name || '',
+    doctor_count: doctorKeys.size,
+    task_count: hydratedTasks.length,
+    item_count: itemCount,
+    completed_count: completedCount,
+    progress_percent: itemCount ? Math.round((completedCount / itemCount) * 100) : 0,
+    status:
+      statusSummary.completed === hydratedTasks.length
+        ? 'completed'
+        : completedCount > 0
+          ? 'in_progress'
+          : 'pending',
+    status_summary: statusSummary,
+    total_reward_cent: hydratedTasks.reduce(
+      (total, task) => total + Number(task.total_reward_cent || 0),
+      0
+    ),
+    create_time: createTime,
+    task_ids: hydratedTasks.map((task) => task.id)
+  }
+}
+
+function getTaskBatchGroups() {
+  const groups = new Map()
+  tasks.forEach((task) => {
+    const batchKey = getTaskBatchKey(task)
+    const group = groups.get(batchKey) || []
+    group.push(task)
+    groups.set(batchKey, group)
+  })
+  return groups
+}
+
+function buildTaskBatches() {
+  return [...getTaskBatchGroups().entries()]
+    .map(([batchKey, batchTasks]) => summarizeTaskBatch(batchTasks, batchKey))
+    .sort((left, right) => String(right.create_time || '').localeCompare(String(left.create_time || '')))
+}
+
+function buildTaskBatchDoctors(batchTasks) {
+  const doctorGroups = new Map()
+  batchTasks.map(hydrateTask).forEach((task) => {
+    const doctorKey = String(task.doctor_id || task.doctor_phone || task.doctor_name)
+    const row = doctorGroups.get(doctorKey) || {
+      id: doctorKey,
+      doctor_id: task.doctor_id,
+      doctor_name: task.doctor_name || '',
+      doctor_phone: task.doctor_phone || '',
+      hospital: task.hospital || '',
+      department: task.department || '',
+      account_status: task.account_status || '',
+      foundation_name: task.foundation_name || '',
+      project_name: task.project_name || '',
+      identifier_name: task.identifier_name || '',
+      task_count: 0,
+      item_count: 0,
+      completed_count: 0,
+      total_reward_cent: 0,
+      task_nos: [],
+      create_time: task.create_time || null
+    }
+    row.task_count += 1
+    row.item_count += Math.max(Number(task.item_count) || 0, 0)
+    row.completed_count += Math.min(
+      Math.max(Number(task.completed_count) || 0, 0),
+      Math.max(Number(task.item_count) || 0, 0)
+    )
+    row.total_reward_cent += Number(task.total_reward_cent || 0)
+    row.task_nos.push(task.task_no)
+    if (String(task.create_time || '') > String(row.create_time || '')) {
+      row.create_time = task.create_time
+    }
+    doctorGroups.set(doctorKey, row)
+  })
+
+  return [...doctorGroups.values()]
+    .map((row) => ({
+      ...row,
+      progress_percent: row.item_count
+        ? Math.round((row.completed_count / row.item_count) * 100)
+        : 0,
+      status:
+        row.item_count > 0 && row.completed_count >= row.item_count
+          ? 'completed'
+          : row.completed_count > 0
+            ? 'in_progress'
+            : 'pending'
+    }))
+    .sort((left, right) => String(left.doctor_name).localeCompare(String(right.doctor_name), 'zh-CN'))
+}
+
+function findTaskBatch(batchKey) {
+  const normalizedKey = String(batchKey || '').trim()
+  if (!normalizedKey) return null
+  const batchTasks = getTaskBatchGroups().get(normalizedKey)
+  if (!batchTasks || batchTasks.length === 0) return null
+  const batch = summarizeTaskBatch(batchTasks, normalizedKey)
+  return {
+    ...batch,
+    doctors: buildTaskBatchDoctors(batchTasks)
+  }
 }
 
 function hydrateDoctor(doctor, includeTasks = false) {
@@ -1270,7 +1629,14 @@ function planTaskQuestions(questionRows, targetPoints, doctor, seed) {
   }
 }
 
-function createTask(doctor, plan, sourceType, importBatchNo = null, importDate = null) {
+function createTask(
+  doctor,
+  plan,
+  sourceType,
+  importBatchNo = null,
+  importDate = null,
+  orgChain = null
+) {
   const id = nextTaskId
   nextTaskId += 1
   const createTime = formatDateTime()
@@ -1284,6 +1650,9 @@ function createTask(doctor, plan, sourceType, importBatchNo = null, importDate =
     hospital: doctor.hospital,
     department: doctor.department,
     account_status: doctor.account_status,
+    foundation_id: orgChain ? orgChain.foundation.id : null,
+    project_id: orgChain ? orgChain.project.id : null,
+    identifier_id: orgChain ? orgChain.identifier.id : null,
     source_type: sourceType,
     import_batch_no: importBatchNo,
     import_date: importDate,
@@ -1470,9 +1839,31 @@ function analyzeTaskImportRows(sourceRows, fileName, seed) {
   const phoneIndex = header.indexOf('手机号')
   const pointsIndex = header.findIndex((value) => ['任务积分', '目标积分'].includes(value))
   const dateIndex = header.findIndex((value) => ['创建日期', '导入日期', '日期'].includes(value))
+  const foundationIndex = header.findIndex((value) =>
+    ['基金会名称', '基金会'].includes(value)
+  )
+  const projectNameIndex = header.findIndex((value) =>
+    ['项目名称', '项目'].includes(value)
+  )
+  const identifierIndex = header.findIndex((value) =>
+    ['项目标识', '项目标识名称', '标识名称'].includes(value)
+  )
 
-  if ([nameIndex, phoneIndex, pointsIndex, dateIndex].some((index) => index < 0)) {
-    return { error: '模板字段不完整，必须包含医生姓名、手机号、任务积分和创建日期' }
+  if (
+    [
+      nameIndex,
+      phoneIndex,
+      pointsIndex,
+      dateIndex,
+      foundationIndex,
+      projectNameIndex,
+      identifierIndex
+    ].some((index) => index < 0)
+  ) {
+    return {
+      error:
+        '模板字段不完整，必须包含医生姓名、手机号、任务积分、创建日期、基金会名称、项目名称和项目标识'
+    }
   }
 
   const phoneDateRows = new Map()
@@ -1511,6 +1902,9 @@ function analyzeTaskImportRows(sourceRows, fileName, seed) {
     const targetPoints = Number(pointsText)
     const createDateText = String(values[dateIndex] || '').trim()
     const createDate = normalizeImportDate(values[dateIndex])
+    const foundationName = String(values[foundationIndex] || '').trim()
+    const projectName = String(values[projectNameIndex] || '').trim()
+    const identifierName = String(values[identifierIndex] || '').trim()
     const errors = []
 
     if (!doctorName) errors.push('医生姓名不能为空')
@@ -1524,6 +1918,51 @@ function analyzeTaskImportRows(sourceRows, fileName, seed) {
 
     if (!createDateText) errors.push('创建日期不能为空')
     else if (!createDate) errors.push('创建日期须为有效日期，例如 2026-08-05')
+
+    let orgChain = null
+    if (!foundationName) {
+      errors.push('基金会名称不能为空')
+    } else if (!projectName) {
+      errors.push('项目名称不能为空')
+    } else if (!identifierName) {
+      errors.push('项目标识不能为空')
+    } else {
+      const foundation = projectOrgRows.foundation.find(
+        (row) => row.name === foundationName
+      )
+      if (!foundation) {
+        errors.push(`基金会“${foundationName}”不存在，请先到组织管理维护`)
+      } else {
+        const project = projectOrgRows.project.find(
+          (row) => row.foundation_id === foundation.id && row.name === projectName
+        )
+        if (!project) {
+          errors.push(
+            `基金会“${foundationName}”下不存在项目“${projectName}”，请先到组织管理维护`
+          )
+        } else {
+          const identifier = projectOrgRows.identifier.find(
+            (row) => row.project_id === project.id && row.name === identifierName
+          )
+          if (!identifier) {
+            errors.push(
+              `项目“${projectName}”下不存在项目标识“${identifierName}”，请先到组织管理维护`
+            )
+          } else {
+            const orgDisabledError = taskOrgDisabledError({
+              foundation,
+              project,
+              identifier
+            })
+            if (orgDisabledError) {
+              errors.push(orgDisabledError)
+            } else {
+              orgChain = { foundation, project, identifier }
+            }
+          }
+        }
+      }
+    }
 
     if (
       doctorPhone &&
@@ -1572,6 +2011,12 @@ function analyzeTaskImportRows(sourceRows, fileName, seed) {
       target_points: Number.isFinite(targetPoints) ? targetPoints : 0,
       create_date: createDate || createDateText,
       import_date: createDate || createDateText,
+      foundation_name: orgChain ? orgChain.foundation.name : foundationName,
+      project_name: orgChain ? orgChain.project.name : projectName,
+      identifier_name: orgChain ? orgChain.identifier.name : identifierName,
+      foundation_id: orgChain ? orgChain.foundation.id : null,
+      project_id: orgChain ? orgChain.project.id : null,
+      identifier_id: orgChain ? orgChain.identifier.id : null,
       matched_item_count: valid ? plan.matched_item_count : 0,
       item_count: valid ? plan.matched_item_count : 0,
       level_summary: valid ? { ...plan.level_summary } : emptyLevelCounts(),
@@ -1663,6 +2108,23 @@ app.get('/health', (req, res) => {
   res.json(success({ status: 'ok', service: 'saiadmin-mock-api' }))
 })
 
+app.get('/mock-files/disclosures/:fileId/:fileName', (req, res) => {
+  const document = disclosureDocumentsByFileId.get(String(req.params.fileId))
+  if (!document) {
+    res.status(404).json(failure(404, '公示文档不存在或已失效'))
+    return
+  }
+
+  const fileBuffer = document.buffer || buildMockDisclosurePdf()
+  res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('Content-Type', 'application/pdf')
+  res.setHeader(
+    'Content-Disposition',
+    `inline; filename="disclosure.pdf"; filename*=UTF-8''${encodeURIComponent(document.name)}`
+  )
+  res.send(fileBuffer)
+})
+
 app.get('/core/captcha', (req, res) => {
   res.json(success({ uuid: 'mock-captcha', image: captchaImage() }))
 })
@@ -1734,6 +2196,67 @@ app.get('/core/system/notice', (req, res) => {
 app.get('/core/system/clearAllCache', (req, res) => {
   res.json(success({}, '缓存已清理'))
 })
+
+app.post(
+  '/core/system/uploadFile',
+  express.raw({
+    type: 'multipart/form-data',
+    limit: disclosureDocumentMaxSize + 1024 * 1024
+  }),
+  (req, res) => {
+    const file = parseMultipartFile(req.body, req.get('Content-Type'))
+    if (!file) {
+      res.json(failure(422, '未读取到上传文件，请重新选择 PDF 文件'))
+      return
+    }
+
+    const fileName = safeDisclosureFileName(file.name)
+    if (!fileName.toLowerCase().endsWith('.pdf')) {
+      res.json(failure(422, '公示文档仅支持 PDF 格式'))
+      return
+    }
+    if (file.mime_type && file.mime_type.toLowerCase() !== 'application/pdf') {
+      res.json(failure(422, '文件内容不是有效的 PDF，请重新选择'))
+      return
+    }
+    if (file.buffer.length > disclosureDocumentMaxSize) {
+      res.json(failure(422, 'PDF 文件不能超过 10 MB，请压缩后重新上传'))
+      return
+    }
+    if (file.buffer.subarray(0, 5).toString() !== '%PDF-') {
+      res.json(failure(422, '文件内容不是有效的 PDF，请重新选择'))
+      return
+    }
+
+    const fileId = `PD${Date.now()}${String(
+      Math.floor(Math.random() * 1000)
+    ).padStart(3, '0')}`
+    const url = `/dev/mock-files/disclosures/${fileId}/${encodeURIComponent(fileName)}`
+    const document = {
+      file_id: fileId,
+      url,
+      name: fileName,
+      size: file.buffer.length,
+      upload_time: formatDateTime(),
+      buffer: file.buffer
+    }
+    disclosureDocuments.set(url, document)
+    disclosureDocumentsByFileId.set(fileId, document)
+
+    res.json(
+      success(
+        {
+          url: document.url,
+          name: document.name,
+          size: document.size,
+          mime_type: 'application/pdf',
+          upload_time: document.upload_time
+        },
+        '公示文档上传成功'
+      )
+    )
+  }
+)
 
 app.use('/core/product', requireAuth)
 
@@ -3324,6 +3847,110 @@ app.post('/core/product/question-bank/changeStatus', (req, res) => {
   )
 })
 
+app.get('/core/product/task/batches', (req, res) => {
+  const keyword = String(req.query.keyword || '').trim().toLowerCase()
+  const sourceType =
+    req.query.source_type === 'all' ? '' : String(req.query.source_type || '').trim()
+  const allowedSourceTypes = ['manual', 'import']
+
+  if (sourceType && !allowedSourceTypes.includes(sourceType)) {
+    res.json(failure(422, '批次来源筛选值无效'))
+    return
+  }
+
+  const filteredBatches = buildTaskBatches().filter((batch) => {
+    if (sourceType && batch.source_type !== sourceType) return false
+    if (!keyword) return true
+    return [
+      batch.batch_no,
+      batch.display_title,
+      batch.foundation_name,
+      batch.project_name,
+      batch.identifier_name
+    ]
+      .filter(Boolean)
+      .some((value) => String(value).toLowerCase().includes(keyword))
+  })
+
+  res.json(success(paginate(filteredBatches, req.query)))
+})
+
+app.get('/core/product/task/batches/read', (req, res) => {
+  const batch = findTaskBatch(req.query.batch_key)
+  if (!batch) {
+    res.json(failure(404, '未找到对应任务批次'))
+    return
+  }
+  res.json(success(batch))
+})
+
+app.get('/core/product/task/batches/progress', (req, res) => {
+  const batch = findTaskBatch(req.query.batch_key)
+  if (!batch) {
+    res.json(failure(404, '未找到对应任务批次'))
+    return
+  }
+
+  const statusLabels = {
+    pending: '待开始',
+    in_progress: '进行中',
+    completed: '已完成'
+  }
+  const rows = [
+    [
+      '批次编号',
+      '基金会名称',
+      '项目名称',
+      '项目标识',
+      '医生姓名',
+      '手机号',
+      '医院',
+      '科室',
+      '任务数',
+      '任务题数',
+      '已完成题数',
+      '完成进度',
+      '任务状态',
+      '账号状态',
+      '最近任务时间'
+    ]
+  ]
+  const accountStatusLabels = {
+    active: '已激活',
+    pending_activation: '待激活',
+    disabled: '已禁用'
+  }
+  batch.doctors.forEach((doctor) => {
+    rows.push([
+      batch.batch_no,
+      doctor.foundation_name || batch.foundation_name || '',
+      doctor.project_name || batch.project_name || '',
+      doctor.identifier_name || batch.identifier_name || '',
+      doctor.doctor_name,
+      toExcelText(doctor.doctor_phone, /^\d{11}$/),
+      doctor.hospital,
+      doctor.department,
+      doctor.task_count,
+      doctor.item_count,
+      doctor.completed_count,
+      `${doctor.progress_percent}%`,
+      statusLabels[doctor.status] || doctor.status || '',
+      accountStatusLabels[doctor.account_status] || doctor.account_status || '',
+      doctor.create_time || ''
+    ])
+  })
+
+  const csv = rows.map((row) => row.map(escapeCsvCell).join(',')).join('\r\n')
+  const safeBatchNo = String(batch.batch_no || 'batch').replace(/[^a-zA-Z0-9_-]/g, '_')
+  res.setHeader('Cache-Control', 'no-store')
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8')
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="task-batch-progress-${safeBatchNo}.csv"`
+  )
+  res.send(`\uFEFF${csv}`)
+})
+
 app.get('/core/product/task/index', (req, res) => {
   const keyword = String(req.query.keyword || '').trim().toLowerCase()
   const status = req.query.status === 'all' ? '' : String(req.query.status || '').trim()
@@ -3355,7 +3982,10 @@ app.get('/core/product/task/index', (req, res) => {
         task.doctor_phone,
         task.hospital,
         task.department,
-        task.import_batch_no
+        task.import_batch_no,
+        task.foundation_name,
+        task.project_name,
+        task.identifier_name
       ]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(keyword))
@@ -3401,6 +4031,10 @@ app.get('/core/product/task/doctorOptions', (req, res) => {
   res.json(success(options))
 })
 
+app.get('/core/product/task/orgOptions', (req, res) => {
+  res.json(success(buildTaskOrgOptions()))
+})
+
 app.post('/core/product/task/save', (req, res) => {
   const doctorId = Number(req.body?.doctor_id)
   const targetPoints = Number(req.body?.target_points)
@@ -3413,6 +4047,32 @@ app.post('/core/product/task/save', (req, res) => {
   const pointsValidation = validateTargetPoints(targetPoints)
   if (pointsValidation.error) {
     res.json(failure(422, pointsValidation.error))
+    return
+  }
+
+  const identifierId = Number(req.body?.identifier_id)
+  if (!Number.isInteger(identifierId) || identifierId <= 0) {
+    res.json(failure(422, '请选择任务所属的项目标识'))
+    return
+  }
+
+  const orgChain = resolveTaskOrgChain(identifierId)
+  if (!orgChain) {
+    res.json(failure(404, '所选项目标识不存在，请刷新后重新选择'))
+    return
+  }
+
+  if (
+    Number(req.body?.project_id) !== orgChain.project.id ||
+    Number(req.body?.foundation_id) !== orgChain.foundation.id
+  ) {
+    res.json(failure(422, '基金会、项目和项目标识不匹配，请重新选择'))
+    return
+  }
+
+  const orgDisabledError = taskOrgDisabledError(orgChain)
+  if (orgDisabledError) {
+    res.json(failure(422, orgDisabledError))
     return
   }
 
@@ -3445,7 +4105,7 @@ app.post('/core/product/task/save', (req, res) => {
     return
   }
 
-  const task = createTask(doctor, plan, 'manual')
+  const task = createTask(doctor, plan, 'manual', null, null, orgChain)
   tasks.push(task)
   updateWorkbench(task.item_count, 0)
   res.json(success(hydrateTask(task), '任务已创建'))
@@ -3579,7 +4239,14 @@ app.post('/core/product/task/importConfirm', (req, res) => {
       level_summary: row.level_summary,
       matched_item_count: row.matched_item_count
     }
-    const task = createTask(doctor, plan, 'import', batchNo, row.create_date)
+    const task = createTask(
+      doctor,
+      plan,
+      'import',
+      batchNo,
+      row.create_date,
+      row.identifier_id ? resolveTaskOrgChain(row.identifier_id) : null
+    )
     tasks.push(task)
     createdTasks.push(task)
   })
@@ -3610,9 +4277,28 @@ app.get('/core/product/task/template', async (req, res) => {
   try {
     const workbook = new ExcelJS.Workbook()
     const worksheet = workbook.addWorksheet('名单')
-    worksheet.addRow(['医生姓名', '手机号', '任务积分', '创建日期'])
-    worksheet.addRow(['示例医生', '13800000000', 10000, '2026-08-05'])
+    worksheet.addRow([
+      '基金会名称',
+      '项目名称',
+      '项目标识',
+      '医生姓名',
+      '手机号',
+      '任务积分',
+      '创建日期'
+    ])
+    worksheet.addRow([
+      '中国人权发展基金会',
+      '希息药事审核项目',
+      '医生端小程序',
+      '示例医生',
+      '13800000000',
+      10000,
+      '2026-08-05'
+    ])
     worksheet.columns = [
+      { width: 26 },
+      { width: 22 },
+      { width: 18 },
       { width: 16 },
       { width: 18 },
       { width: 14 },
@@ -3624,7 +4310,7 @@ app.get('/core/product/task/template', async (req, res) => {
       pattern: 'solid',
       fgColor: { argb: 'FFE8F3FF' }
     }
-    worksheet.getColumn(2).numFmt = '@'
+    worksheet.getColumn(5).numFmt = '@'
     const buffer = await workbook.xlsx.writeBuffer()
     res.setHeader(
       'Content-Type',

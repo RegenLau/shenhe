@@ -95,7 +95,7 @@ export default {
       url: '/core/system/uploadFile',
       method: 'post',
       timeout: 30000,
-      // headers: { 'Content-Type': 'multipart/form-data' },
+      headers: { 'Content-Type': 'multipart/form-data' },
       data
     })
   },

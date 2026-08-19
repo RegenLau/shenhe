@@ -72,6 +72,7 @@ const useUserStore = defineStore('user', {
             homePage.children = webRouter[0].children
             this.setMenu(this.routers)
             this.routers = removeButtonMenu(this.routers)
+            useTagStore().syncTitles(this.routers)
             this.routers.unshift(homePage)
             await this.setApp()
             resolve(response.data)

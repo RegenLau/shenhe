@@ -1,6 +1,31 @@
 import { request } from '@/utils/request.js'
 
 export default {
+  getBatchList(params = {}) {
+    return request({
+      url: '/core/product/task/batches',
+      method: 'get',
+      params
+    })
+  },
+
+  getBatchDetail(batchKey) {
+    return request({
+      url: '/core/product/task/batches/read',
+      method: 'get',
+      params: { batch_key: batchKey }
+    })
+  },
+
+  downloadBatchProgress(batchKey) {
+    return request({
+      url: '/core/product/task/batches/progress',
+      method: 'get',
+      params: { batch_key: batchKey },
+      responseType: 'blob'
+    })
+  },
+
   getPageList(params = {}) {
     return request({
       url: '/core/product/task/index',
@@ -20,6 +45,13 @@ export default {
   getDoctorOptions() {
     return request({
       url: '/core/product/task/doctorOptions',
+      method: 'get'
+    })
+  },
+
+  getOrgOptions() {
+    return request({
+      url: '/core/product/task/orgOptions',
       method: 'get'
     })
   },

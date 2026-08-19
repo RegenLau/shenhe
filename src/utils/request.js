@@ -175,6 +175,10 @@ function createRequest(service, externalService) {
       option.params = {}
     }
 
+    if (typeof FormData !== 'undefined' && option.data instanceof FormData) {
+      delete option.headers['Content-Type']
+    }
+
     if (!/^(http|https)/g.test(option.url)) {
       option.baseURL =
         env.VITE_APP_OPEN_PROXY === 'true'

@@ -2,7 +2,7 @@
   <div class="project-org-page">
     <header class="page-header">
       <div class="page-heading">
-        <h1>项目管理</h1>
+        <h1>组织管理</h1>
         <p>维护基金会、项目和项目标识的层级关系，为业务数据提供归属维度</p>
       </div>
     </header>
@@ -95,6 +95,19 @@
             <span :title="record.code">
               {{ record.code || '—' }}
             </span>
+          </template>
+
+          <template #disclosure_document="{ record }">
+            <a-link
+              v-if="record.disclosure_document_url"
+              :href="record.disclosure_document_url"
+              target="_blank"
+              rel="noopener noreferrer"
+              :title="record.disclosure_document_name || '查看公示文档'"
+            >
+              查看 PDF
+            </a-link>
+            <span v-else>—</span>
           </template>
 
           <template #project_count="{ record }">
@@ -252,6 +265,11 @@ const columns = computed(() => {
   if (tableType.value === 'project') {
     currentColumns.push(
       { title: '所属基金会', dataIndex: 'foundation_name', width: 180 },
+      {
+        title: '公示文档',
+        dataIndex: 'disclosure_document',
+        width: 120
+      },
       {
         title: '标识数',
         dataIndex: 'identifier_count',

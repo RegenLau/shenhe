@@ -36,6 +36,10 @@
       "code": "P-XXYS",
       "status": "1",
       "remark": "医生审核任务主项目",
+      "disclosure_document_url": "/dev/mock-files/disclosures/fixture-1/project-1-disclosure.pdf",
+      "disclosure_document_name": "希息药事审核项目公示文档.pdf",
+      "disclosure_document_size": 128640,
+      "disclosure_document_upload_time": "2026-05-13 10:00:00",
       "create_time": "2026-05-13 10:00:00",
       "update_time": "2026-08-01 09:10:00"
     },
@@ -46,6 +50,10 @@
       "code": "P-HLYS",
       "status": "1",
       "remark": "",
+      "disclosure_document_url": "/dev/mock-files/disclosures/fixture-2/project-2-disclosure.pdf",
+      "disclosure_document_name": "合理用药科普项目公示文档.pdf",
+      "disclosure_document_size": 98304,
+      "disclosure_document_upload_time": "2026-06-15 15:00:00",
       "create_time": "2026-06-15 15:00:00",
       "update_time": "2026-06-15 15:00:00"
     },
@@ -56,6 +64,10 @@
       "code": "P-MBGL",
       "status": "1",
       "remark": "面向社区慢病人群的随访项目",
+      "disclosure_document_url": "/dev/mock-files/disclosures/fixture-3/project-3-disclosure.pdf",
+      "disclosure_document_name": "慢病管理随访项目公示文档.pdf",
+      "disclosure_document_size": 112832,
+      "disclosure_document_upload_time": "2026-06-05 09:40:00",
       "create_time": "2026-06-05 09:40:00",
       "update_time": "2026-07-11 13:25:00"
     },
@@ -66,6 +78,10 @@
       "code": "P-XCYS",
       "status": "2",
       "remark": "项目暂停执行",
+      "disclosure_document_url": "/dev/mock-files/disclosures/fixture-4/project-4-disclosure.pdf",
+      "disclosure_document_name": "乡村药事服务能力建设项目公示文档.pdf",
+      "disclosure_document_size": 146432,
+      "disclosure_document_upload_time": "2026-04-25 10:10:00",
       "create_time": "2026-04-25 10:10:00",
       "update_time": "2026-07-29 08:55:00"
     }

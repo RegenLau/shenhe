@@ -13,7 +13,7 @@
         "path": "/product/project-org",
         "component": "product/project-org/index",
         "meta": {
-          "title": "项目管理",
+          "title": "组织管理",
           "icon": "icon-layers",
           "type": "M"
         }
@@ -55,6 +55,17 @@
         "meta": {
           "title": "任务管理",
           "icon": "icon-list",
+          "type": "M"
+        }
+      },
+      {
+        "name": "productTaskBatch",
+        "path": "/product/task/batch/:batchKey",
+        "component": "product/task/batch",
+        "hidden": 1,
+        "meta": {
+          "title": "批次详情",
+          "hidden": true,
           "type": "M"
         }
       },

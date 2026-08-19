@@ -43,7 +43,7 @@
 | `SaTreeSlider` | 可搜索树形侧栏 | `data`、`fieldNames`、`searchPlaceholder`、`click` | 由页面传数据，模块自行提供 API |
 | `SaUser` | 用户选择和回显 | `modelValue` 数组、`multiple`、`onlyId`、`success` | 当前 Mock 未实现依赖接口 |
 | `SaUploadImage` | 图片上传 | `multiple`、`size`、`limit`、`mode`、`accept` | 当前 Mock 未实现上传接口 |
-| `SaUploadFile` | 文件上传 | `multiple`、`size`、`limit`、`mode`、`accept` | 当前 Mock 未实现上传接口 |
+| `SaUploadFile` | 文件上传 | `multiple`、`size`、`limit`、`mode`、`accept` | Mock 已实现公示文档 PDF 上传；其他文件类型仍需按业务补齐契约 |
 | `SaUploadChunk` | 大文件分片上传 | `size`、`limit`、`accept` 等 | 当前 Mock 未实现分片接口 |
 | `SaResource` | 通用资源选择内容 | `multiple`、`onlyData`、`returnType` | 当前 Mock 未实现资源接口 |
 | `SaResourceButton` | 按钮式资源选择 | `multiple`、`onlyData`、`width` | 当前 Mock 未实现资源接口 |

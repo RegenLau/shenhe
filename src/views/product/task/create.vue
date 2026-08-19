@@ -12,7 +12,7 @@
     <a-alert v-if="optionsError" type="error" show-icon class="options-error">
       {{ optionsError }}
       <template #action>
-        <a-button size="small" :loading="optionsLoading" @click="loadDoctorAccounts">
+        <a-button size="small" :loading="optionsLoading" @click="loadOptionsData">
           重试
         </a-button>
       </template>
@@ -25,6 +25,71 @@
       :auto-label-width="true"
       scroll-to-first-error
     >
+      <a-form-item field="foundation_id" label="所属基金会">
+        <a-select
+          v-model="formData.foundation_id"
+          :options="foundationOptions"
+          :loading="optionsLoading"
+          placeholder="请选择基金会"
+          allow-search
+          allow-clear
+          @change="handleFoundationChange"
+        >
+          <template #empty>
+            <div class="select-empty">
+              {{
+                optionsError
+                  ? '基金会列表加载失败，请使用上方「重试」重新加载'
+                  : '暂无可选基金会，请先到「组织管理」创建'
+              }}
+            </div>
+          </template>
+        </a-select>
+      </a-form-item>
+
+      <a-form-item field="project_id" label="所属项目">
+        <a-select
+          v-model="formData.project_id"
+          :options="projectOptions"
+          :disabled="!formData.foundation_id"
+          :placeholder="formData.foundation_id ? '请选择项目' : '请先选择基金会'"
+          allow-search
+          allow-clear
+          @change="handleProjectChange"
+        >
+          <template #empty>
+            <div class="select-empty">
+              {{
+                formData.foundation_id
+                  ? '该基金会下暂无项目，请先到「组织管理」创建'
+                  : '请先选择基金会'
+              }}
+            </div>
+          </template>
+        </a-select>
+      </a-form-item>
+
+      <a-form-item field="identifier_id" label="项目标识">
+        <a-select
+          v-model="formData.identifier_id"
+          :options="identifierOptions"
+          :disabled="!formData.project_id"
+          :placeholder="formData.project_id ? '请选择项目标识' : '请先选择项目'"
+          allow-search
+          allow-clear
+        >
+          <template #empty>
+            <div class="select-empty">
+              {{
+                formData.project_id
+                  ? '该项目下暂无项目标识，请先到「组织管理」创建'
+                  : '请先选择项目'
+              }}
+            </div>
+          </template>
+        </a-select>
+      </a-form-item>
+
       <a-form-item field="doctor_id" label="选择医生">
         <a-select
           v-model="formData.doctor_id"
@@ -100,8 +165,12 @@ const loading = ref(false)
 const optionsLoading = ref(false)
 const optionsError = ref('')
 const doctorAccounts = ref([])
+const orgOptions = ref([])
 
 const initialFormData = {
+  foundation_id: undefined,
+  project_id: undefined,
+  identifier_id: undefined,
   doctor_id: undefined,
   target_points: 10000
 }
@@ -109,6 +178,9 @@ const initialFormData = {
 const formData = reactive({ ...initialFormData })
 
 const rules = {
+  foundation_id: [{ required: true, message: '请选择所属基金会' }],
+  project_id: [{ required: true, message: '请选择所属项目' }],
+  identifier_id: [{ required: true, message: '请选择项目标识' }],
   doctor_id: [{ required: true, message: '请选择要分配任务的医生' }],
   target_points: [
     { required: true, message: '请输入目标积分' },
@@ -173,6 +245,54 @@ const filterDoctorOption = (inputValue, option) => {
     .some((value) => String(value).toLowerCase().includes(keyword))
 }
 
+const orgOptionLabel = (item) =>
+  item.status === '2' ? `${item.name}（已停用）` : item.name
+
+const foundationOptions = computed(() =>
+  orgOptions.value.map((foundation) => ({
+    value: foundation.id,
+    label: orgOptionLabel(foundation),
+    disabled: foundation.status === '2'
+  }))
+)
+
+const selectedFoundation = computed(
+  () =>
+    orgOptions.value.find((item) => item.id === formData.foundation_id) || null
+)
+
+const projectOptions = computed(() =>
+  (selectedFoundation.value?.projects || []).map((project) => ({
+    value: project.id,
+    label: orgOptionLabel(project),
+    disabled: project.status === '2'
+  }))
+)
+
+const selectedProject = computed(
+  () =>
+    selectedFoundation.value?.projects.find(
+      (item) => item.id === formData.project_id
+    ) || null
+)
+
+const identifierOptions = computed(() =>
+  (selectedProject.value?.identifiers || []).map((identifier) => ({
+    value: identifier.id,
+    label: orgOptionLabel(identifier),
+    disabled: identifier.status === '2'
+  }))
+)
+
+const handleFoundationChange = () => {
+  formData.project_id = undefined
+  formData.identifier_id = undefined
+}
+
+const handleProjectChange = () => {
+  formData.identifier_id = undefined
+}
+
 const selectedDoctor = computed(
   () =>
     doctorAccounts.value.find((item) => item.id === formData.doctor_id) || null
@@ -215,24 +335,34 @@ const formattedTargetPoints = computed(
   () => `${Number(formData.target_points || 0).toLocaleString('zh-CN')} 积分`
 )
 
-const loadDoctorAccounts = async () => {
+const loadOptionsData = async () => {
   if (optionsLoading.value) return
 
   optionsLoading.value = true
   optionsError.value = ''
-  try {
-    const response = await taskApi.getDoctorOptions()
-    if (response.code === 200) {
-      doctorAccounts.value = response.data || []
-      optionsError.value = ''
-    } else {
-      optionsError.value = response.message || '医生列表加载失败，请重试'
-    }
-  } catch {
-    optionsError.value = '医生列表加载失败，请检查网络后重试'
-  } finally {
-    optionsLoading.value = false
+  const [doctorResult, orgResult] = await Promise.allSettled([
+    taskApi.getDoctorOptions(),
+    taskApi.getOrgOptions()
+  ])
+  const doctorResponse = doctorResult.status === 'fulfilled' ? doctorResult.value : null
+  const orgResponse = orgResult.status === 'fulfilled' ? orgResult.value : null
+
+  if (doctorResponse?.code === 200) {
+    doctorAccounts.value = doctorResponse.data || []
   }
+  if (orgResponse?.code === 200) {
+    orgOptions.value = orgResponse.data || []
+  }
+
+  if (!doctorResponse || doctorResponse.code !== 200) {
+    optionsError.value =
+      doctorResponse?.message || '医生列表加载失败，请检查网络后重试'
+  } else if (!orgResponse || orgResponse.code !== 200) {
+    optionsError.value =
+      orgResponse?.message || '基金会与项目信息加载失败，请检查网络后重试'
+  }
+
+  optionsLoading.value = false
 }
 
 const open = async () => {
@@ -240,7 +370,7 @@ const open = async () => {
   visible.value = true
   await nextTick()
   formRef.value?.clearValidate()
-  await loadDoctorAccounts()
+  await loadOptionsData()
 }
 
 const submit = async (done) => {
@@ -266,6 +396,9 @@ const submit = async (done) => {
   loading.value = true
   try {
     const response = await taskApi.save({
+      foundation_id: formData.foundation_id,
+      project_id: formData.project_id,
+      identifier_id: formData.identifier_id,
       doctor_id: formData.doctor_id,
       target_points: formData.target_points
     })
@@ -284,7 +417,10 @@ const submit = async (done) => {
 
     if (response.code === 404) {
       formData.doctor_id = undefined
-      loadDoctorAccounts()
+      formData.foundation_id = undefined
+      formData.project_id = undefined
+      formData.identifier_id = undefined
+      loadOptionsData()
     }
   } catch {
     Message.error('任务创建失败，请检查网络后重试')
