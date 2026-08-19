@@ -3,12 +3,12 @@
     <header class="page-header">
       <div>
         <h1>结算管理</h1>
-        <p>按任务批次查看结算进度，进入批次后处理每位医生的任务结算</p>
+        <p>按任务批次查看结算进度，进入批次后处理每位医生的审核结算</p>
       </div>
     </header>
 
     <a-alert type="info" show-icon>
-      结算与任务管理使用同一批次编号。点击“批次详情”查看该任务批次下的医生、来源任务、结算积分及收款信息。
+      结算与任务管理使用同一批次编号。点击“批次详情”查看该任务批次下的医生审核情况、结算积分及收款信息。
     </a-alert>
 
     <a-alert v-if="summaryError" type="error" show-icon>
@@ -64,7 +64,7 @@
           <a-form-item field="keyword" label="任务批次">
             <a-input
               v-model="searchForm.keyword"
-              placeholder="任务批次编号、医生姓名或任务编号"
+              placeholder="任务批次编号或医生姓名"
               allow-clear
             />
           </a-form-item>
@@ -92,12 +92,9 @@
         {{ formatNumber(record.doctor_count) }} 位
       </template>
 
-      <template #task_count="{ record }">
-        {{ formatNumber(record.task_count) }} 个
-      </template>
-
-      <template #review_count="{ record }">
-        {{ formatNumber(record.review_count) }} 条
+      <template #review_progress="{ record }">
+        {{ formatNumber(record.completed_review_count) }} /
+        {{ formatNumber(record.assigned_review_count) }} 条
       </template>
 
       <template #total_amount_cent="{ record }">
@@ -206,8 +203,12 @@ const columns = reactive([
   },
   { title: '结算周期', dataIndex: 'period', width: 210 },
   { title: '医生数', dataIndex: 'doctor_count', width: 90, align: 'right' },
-  { title: '任务数', dataIndex: 'task_count', width: 90, align: 'right' },
-  { title: '审核条数', dataIndex: 'review_count', width: 100, align: 'right' },
+  {
+    title: '审核进度',
+    dataIndex: 'review_progress',
+    width: 125,
+    align: 'right'
+  },
   { title: '结算积分', dataIndex: 'total_amount_cent', width: 130, align: 'right' },
   { title: '批次创建时间', dataIndex: 'created_at', width: 165 }
 ])

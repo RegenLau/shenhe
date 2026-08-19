@@ -32,7 +32,7 @@ const reviewIssueTypes = [
   'other'
 ]
 const withdrawalSettlementStatuses = ['pending', 'exported', 'settled']
-const settlementBatchStatuses = ['pending', 'exported', 'partial', 'settled']
+const settlementBatchStatuses = ['pending', 'exported', 'partial', 'settled', 'blocked']
 const doctorAccountStatuses = ['pending_activation', 'active', 'disabled']
 const doctorCertificationStatuses = [
   'unsubmitted',
@@ -1071,6 +1071,14 @@ function resolveSettlementBatchStatus(records = []) {
   return 'partial'
 }
 
+function resolveSettlementDoctorStatus(records = [], eligible = false) {
+  if (!eligible) return 'blocked'
+  if (records.length === 0) return 'pending'
+  if (records.every((item) => item.settlement_status === 'settled')) return 'settled'
+  if (records.some((item) => item.settlement_status === 'exported')) return 'exported'
+  return 'pending'
+}
+
 function getTaskBatchNo(task) {
   if (!task) return ''
   if (task.source_type === 'import' && task.import_batch_no) {
@@ -1095,17 +1103,23 @@ function getSettlementDoctorEligibility(withdrawal) {
   const doctorTasks = tasks.filter(
     (item) => getTaskBatchNo(item) === batchNo && getTaskBatchDoctorKey(item) === doctorKey
   )
-  const incompleteTasks = doctorTasks.filter(
-    (item) => taskProgressStatus(item) !== 'completed'
+  const assignedReviewCount = doctorTasks.reduce(
+    (total, item) => total + Math.max(Number(item.item_count) || 0, 0),
+    0
   )
+  const completedReviewCount = doctorTasks.reduce(
+    (total, item) =>
+      total + Math.min(Math.max(Number(item.completed_count) || 0, 0), Math.max(Number(item.item_count) || 0, 0)),
+    0
+  )
+  const duplicateTask = doctorTasks.length > 1
 
   return {
-    eligible: doctorTasks.length > 0 && incompleteTasks.length === 0,
-    task_count: doctorTasks.length,
-    completed_task_count: doctorTasks.length - incompleteTasks.length,
-    task_ids: doctorTasks.map((item) => item.id),
-    task_nos: doctorTasks.map((item) => item.task_no).filter(Boolean),
-    incomplete_task_nos: incompleteTasks.map((item) => item.task_no).filter(Boolean)
+    eligible: doctorTasks.length === 1 && completedReviewCount >= assignedReviewCount,
+    assigned_review_count: assignedReviewCount,
+    completed_review_count: completedReviewCount,
+    task: doctorTasks[0] || task || null,
+    duplicate_task: duplicateTask
   }
 }
 
@@ -1124,20 +1138,17 @@ function buildSettlementTaskRows(records = []) {
       doctor_phone_masked: maskPhone(withdrawal.doctor_phone),
       hospital: doctor?.hospital || task?.hospital || null,
       department: doctor?.department || task?.department || null,
-      task_id: withdrawal.source_task_id,
-      task_no: withdrawal.source_task_no,
-      task_ids: eligibility.task_ids,
-      task_nos: eligibility.task_nos,
-      task_count: eligibility.task_count,
-      completed_task_count: eligibility.completed_task_count,
+      assigned_review_count: eligibility.assigned_review_count,
+      completed_review_count: eligibility.completed_review_count,
       settlement_eligible: eligibility.eligible,
       settlement_block_reason: eligibility.eligible
         ? ''
-        : `当前医生还有 ${eligibility.incomplete_task_nos.length} 个任务未完成，不能部分结算`,
-      task_completed_at: eligibility.eligible ? task?.complete_time || null : null,
+        : eligibility.duplicate_task
+          ? '当前批次存在重复医生任务，暂不能结算'
+          : `当前医生已完成 ${eligibility.completed_review_count} / ${eligibility.assigned_review_count} 条审核，审核未完成，不能结算`,
+      review_completed_at: eligibility.eligible ? task?.complete_time || null : null,
       bank_name: withdrawal.bank_name,
       bank_card_masked: maskBankCard(withdrawal.bank_card_no),
-      settlement_detail_count: 0,
       review_count: 0,
       amount_cent: 0,
       applied_at: withdrawal.apply_time,
@@ -1145,7 +1156,6 @@ function buildSettlementTaskRows(records = []) {
       records: []
     }
 
-    row.settlement_detail_count += 1
     row.review_count += Number(withdrawal.source_review_count) || 0
     row.amount_cent += Number(withdrawal.amount_cent) || 0
     row.settlement_nos.push(withdrawal.withdrawal_no)
@@ -1157,14 +1167,14 @@ function buildSettlementTaskRows(records = []) {
   return [...groups.values()]
     .map(({ records: taskRecords, ...row }) => ({
       ...row,
-      status: row.settlement_eligible ? resolveSettlementBatchStatus(taskRecords) : 'blocked',
+      status: resolveSettlementDoctorStatus(taskRecords, row.settlement_eligible),
       accrued_amount_cent: row.amount_cent,
       amount_cent: row.settlement_eligible ? row.amount_cent : 0
     }))
     .sort(
       (left, right) =>
         right.applied_at.localeCompare(left.applied_at) ||
-        String(left.task_no).localeCompare(String(right.task_no))
+        String(left.doctor_name).localeCompare(String(right.doctor_name), 'zh-CN')
     )
 }
 
@@ -1197,16 +1207,24 @@ function buildSettlementBatches(records = []) {
       id: batchNo,
       batch_no: batchNo,
       display_title: `任务批次 ${batchNo}`,
-      status: resolveSettlementBatchStatus(batchRows),
+      status:
+        taskSettlements.some((item) => item.status === 'blocked')
+          ? taskSettlements.some((item) => item.status !== 'blocked')
+            ? 'partial'
+            : 'blocked'
+          : resolveSettlementBatchStatus(batchRows),
       doctor_count: new Set(batchRows.map((item) => item.doctor_id)).size,
-      task_count: taskSettlements.reduce(
-        (total, item) => total + Number(item.task_count || 0),
-        0
-      ),
-      settlement_detail_count: batchRows.length,
       eligible_doctor_count: taskSettlements.filter((item) => item.settlement_eligible).length,
       blocked_doctor_count: taskSettlements.filter((item) => !item.settlement_eligible).length,
-      review_count: eligibleRows.reduce(
+      assigned_review_count: taskSettlements.reduce(
+        (total, item) => total + Number(item.assigned_review_count || 0),
+        0
+      ),
+      completed_review_count: taskSettlements.reduce(
+        (total, item) => total + Number(item.completed_review_count || 0),
+        0
+      ),
+      review_count: batchRows.reduce(
         (total, item) => total + (Number(item.source_review_count) || 0),
         0
       ),
@@ -1281,7 +1299,7 @@ function syncWithdrawalWorkbench() {
   const withdrawalTodo = {
     id: 'withdrawal_pending',
     title: '任务批次待结算',
-    description: `${withdrawalSummary.pending_count} 条任务结算记录待导出并提交基金会。`,
+    description: `${withdrawalSummary.pending_count} 条审核结算记录待导出并提交基金会。`,
     count: withdrawalSummary.pending_count,
     level: 'warning'
   }
@@ -3506,7 +3524,6 @@ app.get('/core/product/withdrawal/batch/index', (req, res) => {
         batch.display_title,
         ...batch.task_settlements.flatMap((item) => [
           item.doctor_name,
-          item.task_no,
           item.hospital
         ])
       ].some((value) => String(value || '').toLowerCase().includes(keyword))
@@ -3706,7 +3723,7 @@ app.post('/core/product/withdrawal/settlementImportPreview', (req, res) => {
       validationMessage = '该结算记录不属于当前批次，已跳过'
     } else if (!getSettlementDoctorEligibility(withdrawal).eligible) {
       validationStatus = 'invalid'
-      validationMessage = '该医生在当前批次仍有未完成任务，不能部分结算，已跳过'
+      validationMessage = '该医生在当前批次还有审核条数未完成，不能结算，已跳过'
     } else if (currentStatus === 'pending') {
       validationStatus = 'skipped'
       validationMessage = '当前仍为待导出，仅已导出记录可结算，已跳过'
@@ -3861,7 +3878,7 @@ app.post('/core/product/withdrawal/export', (req, res) => {
     )
 
   if (pendingWithdrawals.length === 0) {
-    res.json(failure(422, '当前批次暂无待导出的任务结算记录'))
+    res.json(failure(422, '当前批次暂无待导出的医生结算记录'))
     return
   }
 
@@ -3878,12 +3895,9 @@ app.post('/core/product/withdrawal/export', (req, res) => {
       '银行卡号',
       '金额(元)',
       '结算状态',
-      '来源任务编号',
       '审核条数'
     ],
     ...pendingWithdrawals.map((withdrawal) => {
-      const sourceTasks = getWithdrawalSourceTasks(withdrawal)
-
       return [
         batchNo,
         withdrawal.withdrawal_no,
@@ -3895,11 +3909,7 @@ app.post('/core/product/withdrawal/export', (req, res) => {
         toExcelText(withdrawal.bank_card_no, /^\d{16,19}$/),
         (Number(withdrawal.amount_cent || 0) / 100).toFixed(2),
         '已导出',
-        sourceTasks.map((sourceTask) => sourceTask.task_no).join('、'),
-        sourceTasks.reduce(
-          (total, sourceTask) => total + sourceTask.review_count,
-          0
-        )
+        Number(withdrawal.source_review_count) || 0
       ]
     })
   ]

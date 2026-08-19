@@ -316,6 +316,28 @@
         "color": "green"
       }
     ],
+    "settlement_doctor_status": [
+      {
+        "label": "待结算",
+        "value": "pending",
+        "color": "orange"
+      },
+      {
+        "label": "已导出",
+        "value": "exported",
+        "color": "blue"
+      },
+      {
+        "label": "已结算",
+        "value": "settled",
+        "color": "green"
+      },
+      {
+        "label": "未完成",
+        "value": "blocked",
+        "color": "gray"
+      }
+    ],
     "settlement_batch_status": [
       {
         "label": "待导出",
@@ -338,7 +360,7 @@
         "color": "green"
       },
       {
-        "label": "医生任务未完成",
+        "label": "未完成",
         "value": "blocked",
         "color": "gray"
       }
