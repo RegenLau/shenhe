@@ -92,17 +92,12 @@
         {{ formatNumber(record.doctor_count) }} 位
       </template>
 
-      <template #review_progress="{ record }">
-        {{ formatNumber(record.completed_review_count) }} /
-        {{ formatNumber(record.assigned_review_count) }} 条
+      <template #pending_doctor_count="{ record }">
+        {{ formatNumber(record.pending_doctor_count) }} 位
       </template>
 
-      <template #total_amount_cent="{ record }">
-        <strong class="points-text">{{ formatPoints(record.total_amount_cent) }}</strong>
-      </template>
-
-      <template #period="{ record }">
-        {{ formatPeriod(record) }}
+      <template #pending_amount_cent="{ record }">
+        <strong class="points-text">{{ formatPoints(record.pending_amount_cent) }}</strong>
       </template>
     </sa-table>
   </div>
@@ -131,11 +126,6 @@ const summary = reactive({
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
 const formatPoints = (value) => `${formatNumber(Number(value || 0) / 100)} 积分`
-const formatPeriod = (record) => {
-  if (!record.period_start && !record.period_end) return '—'
-  if (record.period_start === record.period_end) return record.period_start || '—'
-  return `${record.period_start || '—'} 至 ${record.period_end || '—'}`
-}
 
 const loadSummary = async () => {
   summaryLoading.value = true
@@ -201,15 +191,14 @@ const columns = reactive([
     width: 110,
     align: 'center'
   },
-  { title: '结算周期', dataIndex: 'period', width: 210 },
   { title: '医生数', dataIndex: 'doctor_count', width: 90, align: 'right' },
   {
-    title: '审核进度',
-    dataIndex: 'review_progress',
-    width: 125,
+    title: '待结算医生数',
+    dataIndex: 'pending_doctor_count',
+    width: 130,
     align: 'right'
   },
-  { title: '结算积分', dataIndex: 'total_amount_cent', width: 130, align: 'right' },
+  { title: '待结算积分', dataIndex: 'pending_amount_cent', width: 130, align: 'right' },
   { title: '批次创建时间', dataIndex: 'created_at', width: 165 }
 ])
 

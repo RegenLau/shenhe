@@ -92,9 +92,6 @@
                 render="span"
               />
             </a-descriptions-item>
-            <a-descriptions-item label="结算周期">
-              {{ formatPeriod(batch) }}
-            </a-descriptions-item>
             <a-descriptions-item label="导出时间">
               {{ batch.exported_at || '—' }}
             </a-descriptions-item>
@@ -211,12 +208,6 @@ const descriptionColumns = computed(() => (window.innerWidth < 768 ? 1 : 2))
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
 const formatPoints = (value) => `${formatNumber(Number(value || 0) / 100)} 积分`
-const formatPeriod = (record) => {
-  if (!record.period_start && !record.period_end) return '—'
-  if (record.period_start === record.period_end) return record.period_start || '—'
-  return `${record.period_start || '—'} 至 ${record.period_end || '—'}`
-}
-
 const loadDetail = async () => {
   loading.value = true
   errorMessage.value = ''

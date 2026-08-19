@@ -1216,6 +1216,12 @@ function buildSettlementBatches(records = []) {
       doctor_count: new Set(batchRows.map((item) => item.doctor_id)).size,
       eligible_doctor_count: taskSettlements.filter((item) => item.settlement_eligible).length,
       blocked_doctor_count: taskSettlements.filter((item) => !item.settlement_eligible).length,
+      pending_doctor_count: taskSettlements.filter(
+        (item) => item.status !== 'blocked' && item.status !== 'settled'
+      ).length,
+      pending_amount_cent: taskSettlements
+        .filter((item) => item.status !== 'blocked' && item.status !== 'settled')
+        .reduce((total, item) => total + Number(item.amount_cent || 0), 0),
       assigned_review_count: taskSettlements.reduce(
         (total, item) => total + Number(item.assigned_review_count || 0),
         0
