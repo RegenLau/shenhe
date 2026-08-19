@@ -14,6 +14,13 @@ const routes = [
         component: () => import('@/views/product/task/batch.vue'),
         hidden: true,
         meta: { title: '批次详情', hidden: true, type: 'M' }
+      },
+      {
+        name: 'productTaskBatchDoctorDetail',
+        path: '/product/task/batch-detail/:batchKey/doctor/:doctorKey',
+        component: () => import('@/views/product/task/doctor.vue'),
+        hidden: true,
+        meta: { title: '医生进度详情', hidden: true, type: 'M' }
       }
     ]
   },

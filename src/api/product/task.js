@@ -17,6 +17,14 @@ export default {
     })
   },
 
+  getBatchDoctorDetail(batchKey, doctorKey) {
+    return request({
+      url: '/core/product/task/batches/doctor-read',
+      method: 'get',
+      params: { batch_key: batchKey, doctor_key: doctorKey }
+    })
+  },
+
   downloadBatchProgress(batchKey) {
     return request({
       url: '/core/product/task/batches/progress',

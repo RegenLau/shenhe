@@ -57,19 +57,6 @@
           </a-col>
         </a-row>
 
-        <a-card title="批次信息" :bordered="false" class="detail-card">
-          <a-descriptions :column="2" bordered>
-            <a-descriptions-item label="批次编号">{{ batch.batch_no || '—' }}</a-descriptions-item>
-            <a-descriptions-item label="批次来源">
-              <sa-dict :value="batch.source_type" dict="task_source" render="span" />
-            </a-descriptions-item>
-            <a-descriptions-item label="基金会">{{ batch.foundation_name || '—' }}</a-descriptions-item>
-            <a-descriptions-item label="项目">{{ batch.project_name || '—' }}</a-descriptions-item>
-            <a-descriptions-item label="项目标识">{{ batch.identifier_name || '—' }}</a-descriptions-item>
-            <a-descriptions-item label="创建时间">{{ batch.create_time || '—' }}</a-descriptions-item>
-          </a-descriptions>
-        </a-card>
-
         <a-card title="医生进度" :bordered="false" class="detail-card">
           <a-table
             v-if="batch.doctors?.length"
@@ -103,7 +90,7 @@
                     <div>
                       {{ formatNumber(record.completed_count) }} / {{ formatNumber(record.item_count) }} 题
                     </div>
-                    <a-progress :percent="Number(record.progress_percent || 0)" :show-text="false" size="small" />
+                    <a-progress :percent="progressRate(record)" :show-text="false" size="small" />
                   </div>
                 </template>
               </a-table-column>
@@ -121,6 +108,11 @@
                 <template #cell="{ record }">{{ formatPoints(record.total_reward_cent) }}</template>
               </a-table-column>
               <a-table-column title="最近任务时间" data-index="create_time" :width="165" />
+              <a-table-column title="操作" :width="80" fixed="right" align="center">
+                <template #cell="{ record }">
+                  <a-link @click="openDoctorDetail(record)">详情</a-link>
+                </template>
+              </a-table-column>
             </template>
           </a-table>
           <a-empty v-else description="该批次暂无医生进度数据" />
@@ -147,6 +139,16 @@ const batch = reactive({ doctors: [] })
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
 const formatPoints = (value) => `${formatNumber(Number(value || 0) / 100)} 积分`
+const progressRate = (record = {}) => {
+  const itemCount = Number(record.item_count)
+  if (Number.isFinite(itemCount) && itemCount > 0) {
+    return Math.min(
+      Math.max(Number(record.completed_count || 0) / itemCount, 0),
+      1
+    )
+  }
+  return Math.min(Math.max(Number(record.progress_percent || 0) / 100, 0), 1)
+}
 const maskPhone = (value) =>
   String(value || '').replace(/^(\d{3})\d{4}(\d{4})$/, '$1****$2') || '—'
 
@@ -185,6 +187,14 @@ const downloadProgress = async () => {
 }
 
 const goBack = () => router.push({ name: 'productTask' })
+const openDoctorDetail = (record) => {
+  const doctorKey = record.id || record.doctor_id || record.doctor_phone || record.doctor_name || ''
+  if (!doctorKey) return
+  router.push({
+    name: 'productTaskBatchDoctorDetail',
+    params: { batchKey, doctorKey: String(doctorKey) }
+  })
+}
 
 onMounted(loadDetail)
 </script>

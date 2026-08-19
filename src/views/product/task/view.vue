@@ -212,6 +212,17 @@
               </a-table-column>
               <a-table-column title="题号" data-index="question_no" :width="130" />
               <a-table-column title="问题类型" data-index="type_name" :width="170" />
+              <a-table-column title="审核情况" data-index="review_result" :width="105" align="center">
+                <template #cell="{ record }">
+                  <sa-dict
+                    v-if="record.review_result"
+                    :value="record.review_result"
+                    dict="review_result"
+                  />
+                  <span v-else class="empty-text">待审核</span>
+                </template>
+              </a-table-column>
+              <a-table-column title="审核时间" data-index="reviewed_at" :width="165" />
             </template>
           </a-table>
           <a-empty v-else description="暂未读取到已匹配题目" />
@@ -365,7 +376,9 @@ const taskItems = computed(() => {
         snapshotIsObject.question ||
         snapshotIsObject.content ||
         (typeof item.question === 'string' ? item.question : '') ||
-        '—'
+        '—',
+      review_result: item.review_result || snapshotIsObject.review_result || '',
+      reviewed_at: item.reviewed_at || snapshotIsObject.reviewed_at || ''
     }
   })
 })

@@ -1508,6 +1508,94 @@ function findTaskBatch(batchKey) {
   }
 }
 
+function findTaskBatchDoctor(batchKey, doctorKey) {
+  const normalizedBatchKey = String(batchKey || '').trim()
+  const normalizedDoctorKey = String(doctorKey || '').trim()
+  if (!normalizedBatchKey || !normalizedDoctorKey) return null
+
+  const batchTasks = getTaskBatchGroups().get(normalizedBatchKey)
+  if (!batchTasks || batchTasks.length === 0) return null
+
+  const doctorTasks = batchTasks.filter((task) => {
+    const taskDoctorKey = String(task.doctor_id || task.doctor_phone || task.doctor_name)
+    return taskDoctorKey === normalizedDoctorKey
+  })
+  if (doctorTasks.length === 0) return null
+
+  const doctor = buildTaskBatchDoctors(batchTasks).find(
+    (item) => String(item.id) === normalizedDoctorKey
+  )
+  if (!doctor) return null
+
+  const taskDetails = doctorTasks
+    .map((task) => {
+      const hydratedTask = hydrateTask(task)
+      const itemCount = Math.max(Number(task.item_count) || 0, 0)
+      const completedCount = Math.min(
+        Math.max(Number(task.completed_count) || 0, 0),
+        itemCount
+      )
+      const taskReviews = reviews.filter((review) => review.task_id === task.id)
+      const approvedCount = taskReviews.filter(
+        (review) => review.result === 'approved'
+      ).length
+      const rejectedCount = taskReviews.filter(
+        (review) => review.result === 'rejected'
+      ).length
+      const reviewCount = taskReviews.length
+
+      return {
+        ...hydratedTask,
+        status: taskProgressStatus(task),
+        item_count: itemCount,
+        completed_count: completedCount,
+        progress_percent: itemCount
+          ? Math.round((completedCount / itemCount) * 100)
+          : 0,
+        review_count: reviewCount,
+        approved_count: approvedCount,
+        rejected_count: rejectedCount,
+        review_status:
+          reviewCount === 0
+            ? completedCount > 0
+              ? 'in_progress'
+              : 'pending'
+            : reviewCount < completedCount
+              ? 'in_progress'
+              : rejectedCount > 0
+                ? 'rejected'
+                : 'approved'
+      }
+    })
+    .sort((left, right) => String(right.create_time || '').localeCompare(String(left.create_time || '')))
+
+  const summary = taskDetails.reduce(
+    (result, task) => {
+      result.task_count += 1
+      result.item_count += task.item_count
+      result.completed_count += task.completed_count
+      result.reviewed_count += task.review_count
+      result.approved_count += task.approved_count
+      result.rejected_count += task.rejected_count
+      return result
+    },
+    {
+      task_count: 0,
+      item_count: 0,
+      completed_count: 0,
+      reviewed_count: 0,
+      approved_count: 0,
+      rejected_count: 0
+    }
+  )
+
+  return {
+    doctor,
+    summary,
+    tasks: taskDetails
+  }
+}
+
 function hydrateDoctor(doctor, includeTasks = false) {
   const doctorTasks = tasks
     .filter((task) => task.doctor_id === doctor.id)
@@ -3882,6 +3970,15 @@ app.get('/core/product/task/batches/read', (req, res) => {
     return
   }
   res.json(success(batch))
+})
+
+app.get('/core/product/task/batches/doctor-read', (req, res) => {
+  const detail = findTaskBatchDoctor(req.query.batch_key, req.query.doctor_key)
+  if (!detail) {
+    res.json(failure(404, '未找到该批次下的医生进度'))
+    return
+  }
+  res.json(success(detail))
 })
 
 app.get('/core/product/task/batches/progress', (req, res) => {

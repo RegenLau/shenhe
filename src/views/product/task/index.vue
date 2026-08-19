@@ -70,10 +70,10 @@
       <template #identifier_name="{ record }">
         <div class="org-cell">
           <span class="org-primary">
-            {{ record.foundation_name || '—' }} · {{ record.identifier_name || '—' }}
+            {{ record.identifier_name || '—' }}
           </span>
           <span class="org-path">
-            项目：{{ record.project_name || '—' }}
+            {{ record.foundation_name || '—' }}
           </span>
         </div>
       </template>
@@ -85,7 +85,7 @@
             <span class="progress-total"> / {{ formatNumber(record.item_count) }} 题</span>
           </div>
           <a-progress
-            :percent="Number(record.progress_percent || 0)"
+            :percent="progressRate(record)"
             :show-text="false"
             size="small"
           />
@@ -139,6 +139,16 @@ const searchForm = ref({
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
 const formatPoints = (value) => `${formatNumber(Number(value || 0) / 100)} 积分`
+const progressRate = (record = {}) => {
+  const itemCount = Number(record.item_count)
+  if (Number.isFinite(itemCount) && itemCount > 0) {
+    return Math.min(
+      Math.max(Number(record.completed_count || 0) / itemCount, 0),
+      1
+    )
+  }
+  return Math.min(Math.max(Number(record.progress_percent || 0) / 100, 0), 1)
+}
 
 const loadList = async (params) => {
   try {
