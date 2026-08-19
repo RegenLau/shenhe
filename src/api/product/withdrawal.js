@@ -16,6 +16,22 @@ export default {
     })
   },
 
+  getBatchList(params = {}) {
+    return request({
+      url: '/core/product/withdrawal/batch/index',
+      method: 'get',
+      params
+    })
+  },
+
+  readBatch(batchNo) {
+    return request({
+      url: '/core/product/withdrawal/batch/read',
+      method: 'get',
+      params: { batch_no: batchNo }
+    })
+  },
+
   read(id) {
     return request({
       url: '/core/product/withdrawal/read',
@@ -29,6 +45,15 @@ export default {
       url: '/core/product/withdrawal/export',
       method: 'post',
       data: {},
+      responseType: 'blob'
+    })
+  },
+
+  exportBatch(batchNo) {
+    return request({
+      url: '/core/product/withdrawal/export',
+      method: 'post',
+      data: { batch_no: batchNo },
       responseType: 'blob'
     })
   },

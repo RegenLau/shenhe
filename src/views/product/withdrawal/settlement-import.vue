@@ -16,7 +16,7 @@
 
     <section v-if="currentStep === 1" class="step-content">
       <a-alert type="info" show-icon>
-        请使用系统导出的待处理名单，将文件中的“结算状态”从“已导出”改为“已结算”后再上传。系统只更新当前仍为“已导出”的申请；待导出或已经结算的记录会跳过。
+        请使用当前批次导出的名单，将文件中的“结算状态”从“已导出”改为“已结算”后再上传。系统只会回写当前批次中仍为“已导出”的记录。
       </a-alert>
 
       <a-alert type="warning" show-icon>
@@ -43,7 +43,7 @@
       <div class="template-fields">
         <h3>必需字段</h3>
         <div class="field-list">
-          <span>申请单号</span>
+          <span>结算单号</span>
           <span>结算状态</span>
         </div>
       </div>
@@ -105,7 +105,7 @@
       >
         <template #columns>
           <a-table-column title="行号" data-index="row_no" :width="70" />
-          <a-table-column title="申请单号" data-index="withdrawal_no" :width="180">
+          <a-table-column title="结算单号" data-index="withdrawal_no" :width="180">
             <template #cell="{ record }">
               <span class="number-text">{{ record.withdrawal_no || '—' }}</span>
             </template>
@@ -160,7 +160,7 @@
     <section v-else class="step-content">
       <a-result status="success" title="结算状态更新完成">
         <template #subtitle>
-          已按申请单号更新可结算记录，跳过记录保持原状态不变。
+          已按结算单号更新当前批次的可结算记录，跳过记录保持原状态不变。
         </template>
       </a-result>
 
@@ -192,6 +192,12 @@ import { Message } from '@arco-design/web-vue'
 import withdrawalApi from '@/api/product/withdrawal'
 
 const emit = defineEmits(['success'])
+const props = defineProps({
+  batchNo: {
+    type: String,
+    required: true
+  }
+})
 
 const visible = ref(false)
 const currentStep = ref(1)
@@ -282,6 +288,7 @@ const previewImport = async () => {
   previewLoading.value = true
   try {
     const response = await withdrawalApi.previewSettlementImport({
+      batch_no: props.batchNo,
       file_name: fileItem.name || file.name,
       file_size: file.size,
       file_content: await file.text()

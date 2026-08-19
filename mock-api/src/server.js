@@ -32,6 +32,7 @@ const reviewIssueTypes = [
   'other'
 ]
 const withdrawalSettlementStatuses = ['pending', 'exported', 'settled']
+const settlementBatchStatuses = ['pending', 'exported', 'partial', 'settled']
 const doctorAccountStatuses = ['pending_activation', 'active', 'disabled']
 const doctorCertificationStatuses = [
   'unsubmitted',
@@ -1062,6 +1063,135 @@ function summarizeWithdrawals(records = []) {
   )
 }
 
+function resolveSettlementBatchStatus(records = []) {
+  const statuses = new Set(records.map((item) => item.settlement_status))
+  if (statuses.size === 1) return [...statuses][0]
+  return 'partial'
+}
+
+function buildSettlementTaskRows(records = []) {
+  const groups = new Map()
+
+  records.forEach((withdrawal) => {
+    const key = `${withdrawal.doctor_id}:${withdrawal.source_task_id}`
+    const task = tasks.find((item) => item.id === withdrawal.source_task_id)
+    const doctor = doctors.find((item) => item.id === withdrawal.doctor_id)
+    const row = groups.get(key) || {
+      id: key,
+      doctor_id: withdrawal.doctor_id,
+      doctor_name: withdrawal.doctor_name,
+      doctor_phone_masked: maskPhone(withdrawal.doctor_phone),
+      hospital: doctor?.hospital || task?.hospital || null,
+      department: doctor?.department || task?.department || null,
+      task_id: withdrawal.source_task_id,
+      task_no: withdrawal.source_task_no,
+      task_completed_at: task?.complete_time || null,
+      bank_name: withdrawal.bank_name,
+      bank_card_masked: maskBankCard(withdrawal.bank_card_no),
+      settlement_detail_count: 0,
+      review_count: 0,
+      amount_cent: 0,
+      applied_at: withdrawal.apply_time,
+      settlement_nos: [],
+      records: []
+    }
+
+    row.settlement_detail_count += 1
+    row.review_count += Number(withdrawal.source_review_count) || 0
+    row.amount_cent += Number(withdrawal.amount_cent) || 0
+    row.settlement_nos.push(withdrawal.withdrawal_no)
+    row.records.push(withdrawal)
+    if (withdrawal.apply_time < row.applied_at) row.applied_at = withdrawal.apply_time
+    groups.set(key, row)
+  })
+
+  return [...groups.values()]
+    .map(({ records: taskRecords, ...row }) => ({
+      ...row,
+      status: resolveSettlementBatchStatus(taskRecords)
+    }))
+    .sort(
+      (left, right) =>
+        right.applied_at.localeCompare(left.applied_at) ||
+        String(left.task_no).localeCompare(String(right.task_no))
+    )
+}
+
+function buildSettlementBatches(records = []) {
+  const groups = new Map()
+
+  records.forEach((withdrawal) => {
+    const batchNo = String(withdrawal.settlement_batch_no || '').trim()
+    if (!batchNo) return
+    const batchRows = groups.get(batchNo) || []
+    batchRows.push(withdrawal)
+    groups.set(batchNo, batchRows)
+  })
+
+  return [...groups.entries()].map(([batchNo, batchRows]) => {
+    const dates = batchRows
+      .map((item) => String(item.apply_time || '').slice(0, 10))
+      .filter(Boolean)
+      .sort()
+    const exportedTimes = batchRows.map((item) => item.export_time).filter(Boolean).sort()
+    const settledTimes = batchRows.map((item) => item.settled_time).filter(Boolean).sort()
+    const taskSettlements = buildSettlementTaskRows(batchRows)
+    const firstDate = dates[0] || ''
+    const lastDate = dates.at(-1) || ''
+
+    return {
+      id: batchNo,
+      batch_no: batchNo,
+      display_title: firstDate === lastDate
+        ? `${firstDate} 结算批次`
+        : `${firstDate} 至 ${lastDate} 结算批次`,
+      status: resolveSettlementBatchStatus(batchRows),
+      doctor_count: new Set(batchRows.map((item) => item.doctor_id)).size,
+      task_count: taskSettlements.length,
+      settlement_detail_count: batchRows.length,
+      review_count: batchRows.reduce(
+        (total, item) => total + (Number(item.source_review_count) || 0),
+        0
+      ),
+      total_amount_cent: batchRows.reduce(
+        (total, item) => total + (Number(item.amount_cent) || 0),
+        0
+      ),
+      period_start: firstDate || null,
+      period_end: lastDate || null,
+      created_at: batchRows.map((item) => item.apply_time).sort()[0] || null,
+      exported_at: exportedTimes.at(-1) || null,
+      settled_at:
+        batchRows.every((item) => item.settlement_status === 'settled')
+          ? settledTimes.at(-1) || null
+          : null,
+      task_settlements: taskSettlements
+    }
+  })
+}
+
+function summarizeSettlementBatches(records = []) {
+  return buildSettlementBatches(records).reduce(
+    (summary, batch) => {
+      summary.total_batch_count += 1
+      summary.total_amount_cent += batch.total_amount_cent
+      if (batch.status === 'pending') summary.pending_batch_count += 1
+      if (batch.status === 'exported' || batch.status === 'partial') {
+        summary.processing_batch_count += 1
+      }
+      if (batch.status === 'settled') summary.settled_batch_count += 1
+      return summary
+    },
+    {
+      total_batch_count: 0,
+      pending_batch_count: 0,
+      processing_batch_count: 0,
+      settled_batch_count: 0,
+      total_amount_cent: 0
+    }
+  )
+}
+
 function syncWithdrawalWorkbench() {
   const withdrawalSummary = summarizeWithdrawals(withdrawals)
   const accruedAmountCent = tasks
@@ -1092,8 +1222,8 @@ function syncWithdrawalWorkbench() {
 
   const withdrawalTodo = {
     id: 'withdrawal_pending',
-    title: '提现数据待导出',
-    description: `${withdrawalSummary.pending_count} 笔提现申请待导出并提交基金会。`,
+    title: '结算批次待导出',
+    description: `${withdrawalSummary.pending_count} 条任务结算记录待导出并提交基金会。`,
     count: withdrawalSummary.pending_count,
     level: 'warning'
   }
@@ -3283,7 +3413,73 @@ app.get('/core/product/review/read', (req, res) => {
 })
 
 app.get('/core/product/withdrawal/summary', (req, res) => {
-  res.json(success(summarizeWithdrawals(withdrawals)))
+  res.json(success(summarizeSettlementBatches(withdrawals)))
+})
+
+app.get('/core/product/withdrawal/batch/index', (req, res) => {
+  const keyword = String(req.query.keyword || '').trim().toLowerCase()
+  const status = req.query.status === 'all' ? '' : String(req.query.status || '').trim()
+  const page = req.query.page === undefined ? 1 : Number(req.query.page)
+  const limit = req.query.limit === undefined ? 10 : Number(req.query.limit)
+
+  if (status && !settlementBatchStatuses.includes(status)) {
+    res.json(failure(422, '结算批次状态筛选值无效'))
+    return
+  }
+
+  if (!Number.isInteger(page) || page <= 0) {
+    res.json(failure(422, '页码必须是正整数'))
+    return
+  }
+
+  if (!Number.isInteger(limit) || limit <= 0) {
+    res.json(failure(422, '每页条数必须是正整数'))
+    return
+  }
+
+  const filteredBatches = buildSettlementBatches(withdrawals)
+    .filter((batch) => {
+      if (status && batch.status !== status) return false
+      if (!keyword) return true
+
+      return [
+        batch.batch_no,
+        batch.display_title,
+        ...batch.task_settlements.flatMap((item) => [
+          item.doctor_name,
+          item.task_no,
+          item.hospital
+        ])
+      ].some((value) => String(value || '').toLowerCase().includes(keyword))
+    })
+    .map(({ task_settlements: taskSettlements, ...batch }) => batch)
+    .sort(
+      (left, right) =>
+        String(right.created_at || '').localeCompare(String(left.created_at || '')) ||
+        right.batch_no.localeCompare(left.batch_no)
+    )
+
+  res.json(success(paginate(filteredBatches, { page, limit })))
+})
+
+app.get('/core/product/withdrawal/batch/read', (req, res) => {
+  const batchNo = String(req.query.batch_no || '').trim()
+
+  if (!batchNo) {
+    res.json(failure(422, '请提供结算批次编号'))
+    return
+  }
+
+  const batch = buildSettlementBatches(withdrawals).find(
+    (item) => item.batch_no === batchNo
+  )
+
+  if (!batch) {
+    res.json(failure(404, '未找到对应结算批次'))
+    return
+  }
+
+  res.json(success(batch))
 })
 
 app.get('/core/product/withdrawal/index', (req, res) => {
@@ -3348,9 +3544,23 @@ app.get('/core/product/withdrawal/read', (req, res) => {
 })
 
 app.post('/core/product/withdrawal/settlementImportPreview', (req, res) => {
+  const batchNo = String(req.body?.batch_no || '').trim()
   const fileName = String(req.body?.file_name || '').trim()
   const fileSize = Number(req.body?.file_size)
   const fileContent = String(req.body?.file_content || '')
+
+  if (!batchNo) {
+    res.json(failure(422, '请先进入要回写的结算批次'))
+    return
+  }
+
+  const targetBatch = buildSettlementBatches(withdrawals).find(
+    (item) => item.batch_no === batchNo
+  )
+  if (!targetBatch) {
+    res.json(failure(404, '结算批次不存在，请返回列表后重试'))
+    return
+  }
 
   if (!fileName) {
     res.json(failure(422, '请选择要导入的已结算名单'))
@@ -3384,18 +3594,18 @@ app.post('/core/product/withdrawal/settlementImportPreview', (req, res) => {
   }
 
   if (csvRows.length < 2) {
-    res.json(failure(422, '名单中没有可更新的提现记录'))
+    res.json(failure(422, '名单中没有可更新的任务结算记录'))
     return
   }
 
   const header = csvRows[0]
   const withdrawalNoIndex = header.findIndex((value) =>
-    ['申请单号', '提现申请单号'].includes(value)
+    ['结算单号', '申请单号', '提现申请单号'].includes(value)
   )
   const settlementStatusIndex = header.indexOf('结算状态')
 
   if (withdrawalNoIndex < 0 || settlementStatusIndex < 0) {
-    res.json(failure(422, '模板字段不完整，必须包含申请单号和结算状态'))
+    res.json(failure(422, '模板字段不完整，必须包含结算单号和结算状态'))
     return
   }
 
@@ -3422,16 +3632,19 @@ app.post('/core/product/withdrawal/settlementImportPreview', (req, res) => {
 
     if (!withdrawalNo) {
       validationStatus = 'invalid'
-      validationMessage = '申请单号不能为空，已跳过'
+      validationMessage = '结算单号不能为空，已跳过'
     } else if ((withdrawalNoCounts.get(withdrawalNo) || 0) > 1) {
       validationStatus = 'invalid'
-      validationMessage = '申请单号在名单中重复，已跳过'
+      validationMessage = '结算单号在名单中重复，已跳过'
     } else if (targetStatus !== '已结算') {
       validationStatus = 'invalid'
       validationMessage = '结算状态必须改为“已结算”，已跳过'
     } else if (!withdrawal) {
       validationStatus = 'invalid'
-      validationMessage = '系统中不存在该提现申请，已跳过'
+      validationMessage = '系统中不存在该结算记录，已跳过'
+    } else if (withdrawal.settlement_batch_no !== batchNo) {
+      validationStatus = 'invalid'
+      validationMessage = '该结算记录不属于当前批次，已跳过'
     } else if (currentStatus === 'pending') {
       validationStatus = 'skipped'
       validationMessage = '当前仍为待导出，仅已导出记录可结算，已跳过'
@@ -3446,6 +3659,7 @@ app.post('/core/product/withdrawal/settlementImportPreview', (req, res) => {
     return {
       row_no: rowNo,
       withdrawal_no: withdrawalNo,
+      settlement_no: withdrawalNo,
       payee_name: withdrawal?.doctor_name || '',
       target_status: targetStatus,
       current_status: currentStatus,
@@ -3470,6 +3684,7 @@ app.post('/core/product/withdrawal/settlementImportPreview', (req, res) => {
   ).padStart(3, '0')}`
 
   withdrawalSettlementPreviews.set(previewId, {
+    batch_no: batchNo,
     file_name: fileName,
     rows,
     summary
@@ -3478,6 +3693,7 @@ app.post('/core/product/withdrawal/settlementImportPreview', (req, res) => {
   res.json(
     success({
       preview_id: previewId,
+      batch_no: batchNo,
       file_name: fileName,
       rows,
       summary
@@ -3517,7 +3733,11 @@ app.post('/core/product/withdrawal/settlementImportConfirm', (req, res) => {
       (item) => item.withdrawal_no === row.withdrawal_no
     )
 
-    if (!withdrawal || withdrawal.settlement_status !== 'exported') {
+    if (
+      !withdrawal ||
+      withdrawal.settlement_batch_no !== preview.batch_no ||
+      withdrawal.settlement_status !== 'exported'
+    ) {
       changedStateSkippedCount += 1
       return
     }
@@ -3539,33 +3759,54 @@ app.post('/core/product/withdrawal/settlementImportConfirm', (req, res) => {
   res.json(
     success(
       {
+        batch_no: preview.batch_no,
         updated_count: updatedCount,
         skipped_count: skippedCount,
         settled_time: updatedCount > 0 ? settledTime : null
       },
-      `已更新 ${updatedCount} 笔提现结算状态，跳过 ${skippedCount} 笔`
+      `已更新 ${updatedCount} 条任务结算记录，跳过 ${skippedCount} 条`
     )
   )
 })
 
 app.post('/core/product/withdrawal/export', (req, res) => {
+  const batchNo = String(req.body?.batch_no || '').trim()
+
+  if (!batchNo) {
+    res.json(failure(422, '请提供要导出的结算批次'))
+    return
+  }
+
+  const batch = buildSettlementBatches(withdrawals).find(
+    (item) => item.batch_no === batchNo
+  )
+  if (!batch) {
+    res.json(failure(404, '结算批次不存在，请返回列表后重试'))
+    return
+  }
+
   const pendingWithdrawals = withdrawals
-    .filter((withdrawal) => withdrawal.settlement_status === 'pending')
+    .filter(
+      (withdrawal) =>
+        withdrawal.settlement_batch_no === batchNo &&
+        withdrawal.settlement_status === 'pending'
+    )
     .sort(
       (left, right) =>
         left.apply_time.localeCompare(right.apply_time) || left.id - right.id
     )
 
   if (pendingWithdrawals.length === 0) {
-    res.json(failure(422, '暂无待导出的提现申请'))
+    res.json(failure(422, '当前批次暂无待导出的任务结算记录'))
     return
   }
 
   const exportTime = formatDateTime()
   const rows = [
     [
-      '申请单号',
-      '申请时间',
+      '结算批次',
+      '结算单号',
+      '记录时间',
       '姓名',
       '手机号',
       '身份证号',
@@ -3580,6 +3821,7 @@ app.post('/core/product/withdrawal/export', (req, res) => {
       const sourceTasks = getWithdrawalSourceTasks(withdrawal)
 
       return [
+        batchNo,
         withdrawal.withdrawal_no,
         withdrawal.apply_time,
         withdrawal.doctor_name,
@@ -3604,7 +3846,7 @@ app.post('/core/product/withdrawal/export', (req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8')
   res.setHeader(
     'Content-Disposition',
-    `attachment; filename="foundation-withdrawals-${exportBatch}.csv"`
+    `attachment; filename="foundation-settlement-${batchNo}-${exportBatch}.csv"`
   )
   res.once('finish', () => {
     pendingWithdrawals.forEach((withdrawal) => {

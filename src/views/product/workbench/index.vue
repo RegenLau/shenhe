@@ -230,7 +230,7 @@
         <a-col :xs="24" :xl="9">
           <a-card :bordered="false" class="section-card" title="积分结算">
             <template #extra>
-              <a-link @click="goTo('/product/withdrawal')">提现管理</a-link>
+              <a-link @click="goTo('/product/withdrawal')">结算管理</a-link>
             </template>
 
             <ul class="settlement-list">
@@ -258,7 +258,7 @@
               </li>
             </ul>
             <p class="settlement-note">
-              1 积分 = 1 元；提现名单导出后由基金会人工结算，结算结果通过名单导入回写。
+              1 积分 = 1 元；结算批次导出后由基金会人工结算，结果通过批次名单导入回写。
             </p>
           </a-card>
         </a-col>

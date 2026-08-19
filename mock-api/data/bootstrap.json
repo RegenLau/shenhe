@@ -73,7 +73,7 @@
         "path": "/product/withdrawal",
         "component": "product/withdrawal/index",
         "meta": {
-          "title": "提现管理",
+          "title": "结算管理",
           "icon": "icon-export",
           "type": "M"
         }
@@ -309,6 +309,28 @@
         "label": "已导出",
         "value": "exported",
         "color": "blue"
+      },
+      {
+        "label": "已结算",
+        "value": "settled",
+        "color": "green"
+      }
+    ],
+    "settlement_batch_status": [
+      {
+        "label": "待导出",
+        "value": "pending",
+        "color": "orange"
+      },
+      {
+        "label": "待结算",
+        "value": "exported",
+        "color": "blue"
+      },
+      {
+        "label": "部分结算",
+        "value": "partial",
+        "color": "purple"
       },
       {
         "label": "已结算",

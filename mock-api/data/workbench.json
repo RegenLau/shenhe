@@ -29,8 +29,8 @@
   "todos": [
     {
       "id": "withdrawal_pending",
-      "title": "提现数据待导出",
-      "description": "8 笔提现申请待导出并提交基金会。",
+      "title": "结算批次待导出",
+      "description": "8 条任务结算记录待导出并提交基金会。",
       "count": 8,
       "level": "warning"
     }
