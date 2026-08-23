@@ -407,10 +407,11 @@ tool.download = (res, downName = '') => {
       type: res.headers['content-type'].replace(';charset=utf8', '')
     })
     if (!downName) {
-      const contentDisposition = decodeURI(res.headers['content-disposition'])
-      const result = contentDisposition.match(/filename=\"(.+)/gi)
-      fileName = result[0].replace(/filename=\"/gi, '')
-      fileName = fileName.replace('"', '')
+      const contentDisposition = res.headers['content-disposition'] || ''
+      const encodedName = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i)
+      const plainName = contentDisposition.match(/filename=\"?([^\";]+)\"?/i)
+      const matchedName = encodedName?.[1] || plainName?.[1] || ''
+      fileName = matchedName ? decodeURIComponent(matchedName) : ''
     }
   }
 

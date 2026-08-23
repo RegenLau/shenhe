@@ -29,7 +29,7 @@
           @click="confirmExport"
         >
           <template #icon><icon-download /></template>
-          导出已选 {{ selectedOrderIds.length }} 张
+          导出已选 {{ selectedOrderIds.length }} 位医生
         </a-button>
       </a-space>
     </header>
@@ -48,7 +48,7 @@
     <a-spin v-else :loading="loading" class="cycle-content">
       <template v-if="cycle.cycle_no">
         <a-alert type="info" show-icon>
-          自动月结只生成结算单，不代表已向银行发起打款。请导出月度结算单和医生结算明细，打款后再导入到账结果。可结算积分为 0 的医生不会生成结算记录，也不会出现在导出文件中。
+          自动月结只生成结算记录，不代表已向银行发起打款。每次导出只生成 1 份月度结算单和 1 份合并结算明细，所有已选医生汇总在这两份文件中。打款后再导入到账结果；可结算积分为 0 的医生不会进入导出文件。
         </a-alert>
 
         <section class="summary-grid" aria-label="账期统计">
@@ -460,7 +460,7 @@ const exportSelected = async () => {
     if (downloadRetry.visible) {
       Message.warning('结算文件已生成，部分下载失败，请直接重试')
     } else {
-      Message.success('月度结算单和医生结算明细已分别下载')
+      Message.success('1 份月度结算单和 1 份合并结算明细已下载')
     }
     selectedOrderIds.value = []
     await loadDetail()
@@ -484,9 +484,9 @@ const retryDownload = async (type) => {
 }
 const confirmExport = () => {
   Modal.confirm({
-    title: `确认导出 ${selectedOrderIds.value.length} 张医生结算单`,
+    title: `确认导出 ${selectedOrderIds.value.length} 位医生的结算文件`,
     content:
-      '系统将分别生成月度结算单和对应医生结算明细。文件包含身份证号、银行卡号及审核问答等敏感信息，仅限结算使用，请妥善保管。',
+      '系统只生成 1 份月度结算单和 1 份合并结算明细，所有已选医生汇总在这两份文件中。文件包含身份证号、银行卡号及审核问答等敏感信息，仅限结算使用，请妥善保管。',
     width: 'min(440px, calc(100vw - 32px))',
     okText: '确认导出',
     onOk: exportSelected

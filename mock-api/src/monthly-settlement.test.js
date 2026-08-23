@@ -212,19 +212,30 @@ test('月结全链路：零积分跳过、人工特批、双表导出与到账�
     '人工结算单导出后不得计入月结中统计'
   )
 
-  const pendingOrder = initialCycle.doctor_settlements.find(
+  const pendingOrders = initialCycle.doctor_settlements.filter(
     (order) => order.status === 'pending_export'
   )
-  assert.ok(pendingOrder)
+  assert.ok(pendingOrders.length > 1, '测试账期必须包含多位待导出医生')
+  const pendingOrder = pendingOrders[0]
+  const pendingOrderIds = pendingOrders.map((order) => order.id)
+  const pendingOrderNos = new Set(
+    pendingOrders.map((order) => order.settlement_no)
+  )
+  const pendingDoctorCount = new Set(
+    pendingOrders.map((order) => order.doctor_id)
+  ).size
   const exportResponse = await api('/core/product/settlement/export/create', {
     method: 'POST',
     body: JSON.stringify({
       cycle_id: initialCycle.id,
-      order_ids: [pendingOrder.id]
+      order_ids: pendingOrderIds
     })
   })
   assert.equal(exportResponse.code, 200)
-  assert.equal(exportResponse.data.order_count, 1)
+  assert.equal(exportResponse.data.file_count, 2)
+  assert.equal(exportResponse.data.doctor_count, pendingDoctorCount)
+  assert.equal(exportResponse.data.order_count, pendingOrders.length)
+  assert.match(exportResponse.message, /1 份月度结算单和 1 份合并结算明细/)
 
   const statementResponse = await fetch(
     `${baseUrl}${exportResponse.data.statement_url}`,
@@ -242,27 +253,38 @@ test('月结全链路：零积分跳过、人工特批、双表导出与到账�
   await statementWorkbook.xlsx.load(statementBuffer)
   const statementSheet = statementWorkbook.worksheets[0]
   assert.equal(statementSheet.name, '月度结算单')
-  assert.equal(statementSheet.rowCount, 2)
-  assert.equal(statementSheet.getRow(2).getCell(2).text, pendingOrder.settlement_no)
-  assert.ok(Number(statementSheet.getRow(2).getCell(12).value) > 0)
+  assert.equal(statementSheet.rowCount, pendingOrders.length + 1)
+  const exportedStatementNos = new Set()
+  for (let rowNumber = 2; rowNumber <= statementSheet.rowCount; rowNumber += 1) {
+    exportedStatementNos.add(statementSheet.getRow(rowNumber).getCell(2).text)
+    assert.ok(Number(statementSheet.getRow(rowNumber).getCell(12).value) > 0)
+  }
+  assert.deepEqual(exportedStatementNos, pendingOrderNos)
 
   const detailWorkbook = new ExcelJS.Workbook()
   await detailWorkbook.xlsx.load(detailBuffer)
   const detailSheet = detailWorkbook.worksheets[0]
   assert.equal(detailSheet.name, '医生结算明细')
   assert.ok(detailSheet.rowCount > 1)
+  const exportedDetailNos = new Set()
   for (let rowNumber = 2; rowNumber <= detailSheet.rowCount; rowNumber += 1) {
-    assert.equal(detailSheet.getRow(rowNumber).getCell(2).text, pendingOrder.settlement_no)
+    const settlementNo = detailSheet.getRow(rowNumber).getCell(2).text
+    assert.ok(pendingOrderNos.has(settlementNo))
+    exportedDetailNos.add(settlementNo)
     assert.ok(Number(detailSheet.getRow(rowNumber).getCell(13).value) > 0)
   }
+  assert.deepEqual(exportedDetailNos, pendingOrderNos)
 
   const headers = []
   statementSheet.getRow(1).eachCell({ includeEmpty: true }, (cell, column) => {
     headers[column - 1] = cell.text
   })
-  statementSheet.getRow(2).getCell(headers.indexOf('到账结果') + 1).value = '已到账'
-  statementSheet.getRow(2).getCell(headers.indexOf('到账时间') + 1).value = '2026-08-23 12:00:00'
-  statementSheet.getRow(2).getCell(headers.indexOf('银行流水号') + 1).value = 'BANK-TEST-0001'
+  const paidRowNumber = pendingOrders.findIndex(
+    (order) => order.id === pendingOrder.id
+  ) + 2
+  statementSheet.getRow(paidRowNumber).getCell(headers.indexOf('到账结果') + 1).value = '已到账'
+  statementSheet.getRow(paidRowNumber).getCell(headers.indexOf('到账时间') + 1).value = '2026-08-23 12:00:00'
+  statementSheet.getRow(paidRowNumber).getCell(headers.indexOf('银行流水号') + 1).value = 'BANK-TEST-0001'
   const resultBuffer = Buffer.from(await statementWorkbook.xlsx.writeBuffer())
   const preview = await api('/core/product/settlement/resultImportPreview', {
     method: 'POST',

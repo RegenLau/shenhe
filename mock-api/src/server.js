@@ -5243,6 +5243,7 @@ app.post('/core/product/settlement/export/create', async (req, res) => {
 
   const now = formatDateTime()
   const isManualExport = !cycle
+  const doctorCount = new Set(orders.map((item) => item.doctor_id)).size
   const exportNo = `${isManualExport ? 'RGEX' : 'YJEX'}${now.slice(0, 10).replaceAll('-', '')}${String(
     nextMonthlySettlementExportId
   ).padStart(4, '0')}`
@@ -5291,13 +5292,17 @@ app.post('/core/product/settlement/export/create', async (req, res) => {
     success(
       {
         export_no: exportNo,
+        file_count: 2,
+        doctor_count: doctorCount,
         order_count: orders.length,
         statement_name: statementName,
         detail_name: detailName,
         statement_url: `/core/product/settlement/export/download?export_no=${exportNo}&file=statement`,
         detail_url: `/core/product/settlement/export/download?export_no=${exportNo}&file=detail`
       },
-      `已生成 ${orders.length} 张结算单及对应医生明细`
+      isManualExport
+        ? '已生成 1 份人工结算单和 1 份结算明细'
+        : `已生成 1 份月度结算单和 1 份合并结算明细，共 ${doctorCount} 位医生`
     )
   )
 })

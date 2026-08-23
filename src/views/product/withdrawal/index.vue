@@ -393,7 +393,7 @@ const exportManualRecord = async (record) => {
     if (manualDownloadRetry.visible) {
       Message.warning('文件已生成，部分下载失败，请直接重试')
     } else {
-      Message.success('人工结算单和对应医生结算明细已下载')
+      Message.success('1 份人工结算单和 1 份结算明细已下载')
     }
     refreshSettlement()
   } catch {
@@ -406,7 +406,7 @@ const confirmManualExport = (record) => {
   Modal.confirm({
     title: `确认导出 ${record.doctor_name || ''} 的人工结算文件`,
     content:
-      '系统将分别生成人工结算单和对应医生结算明细。文件包含身份证号、银行卡号及审核问答等敏感信息，请妥善保管。',
+      '系统只生成 1 份人工结算单和 1 份结算明细。文件包含身份证号、银行卡号及审核问答等敏感信息，请妥善保管。',
     width: 'min(440px, calc(100vw - 32px))',
     okText: '确认导出',
     onOk: () => exportManualRecord(record)
