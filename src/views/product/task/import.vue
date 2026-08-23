@@ -2,7 +2,7 @@
   <a-drawer
     v-model:visible="visible"
     width="min(760px, 100vw)"
-    title="导入名单并创建任务"
+    title="导入名单并创建项目"
     :footer="false"
     :mask-closable="false"
     unmount-on-close
@@ -16,9 +16,9 @@
 
     <section v-if="currentStep === 1" class="step-content">
       <a-alert type="info" show-icon>
-        模板需填写基金会名称、项目名称、项目标识、医生姓名、手机号、任务积分和创建日期（如
+        模板需填写基金会名称、项目名称、项目标识、医生姓名、手机号、项目积分和创建日期（如
         2026-08-05）。系统会从题库随机匹配 100 / 200 / 300
-        积分题目，精确组成每行任务积分；同一医生同一创建日期不能重复导入；基金会、项目和项目标识须与「组织管理」中维护的层级一致。
+        积分题目，精确组成每行项目积分；同一医生同一创建日期不能重复导入；基金会、项目和项目标识须与「组织管理」中维护的层级一致。
       </a-alert>
 
       <a-upload
@@ -46,7 +46,7 @@
           <span>项目标识</span>
           <span>医生姓名</span>
           <span>手机号</span>
-          <span>任务积分</span>
+          <span>项目积分</span>
           <span>创建日期</span>
         </div>
       </div>
@@ -92,11 +92,11 @@
         show-icon
         class="preview-alert"
       >
-        有 {{ preview.summary.error_rows }} 行数据未通过校验。请修正文件后重新上传，本次不会创建任何账号或任务。
+        有 {{ preview.summary.error_rows }} 行数据未通过校验。请修正文件后重新上传，本次不会创建任何账号或项目。
       </a-alert>
       <a-alert v-else type="success" show-icon class="preview-alert">
         全部 {{ preview.summary.valid_rows }} 行校验通过，将创建
-        {{ preview.summary.task_count }} 个任务单（新建账号
+        {{ preview.summary.task_count }} 个项目（新建账号
         {{ preview.summary.new_account_count }} 个、复用账号
         {{ preview.summary.reused_account_count }} 个），目标总积分
         {{ formatPoints(summaryTargetPoints) }}。
@@ -133,7 +133,7 @@
               {{ getCreateDate(record) }}
             </template>
           </a-table-column>
-          <a-table-column title="任务积分" data-index="target_points" :width="110">
+          <a-table-column title="项目积分" data-index="target_points" :width="110">
             <template #cell="{ record }">
               {{ formatPoints(getTargetPoints(record)) }}
             </template>
@@ -183,7 +183,7 @@
           :disabled="preview.summary.error_rows > 0"
           @click="confirmImport"
         >
-          确认导入并创建任务
+          确认导入并创建项目
         </a-button>
       </div>
     </section>
@@ -191,7 +191,7 @@
     <section v-else class="step-content">
       <a-result status="success" title="名单导入完成">
         <template #subtitle>
-          医生账号和审核任务已同时创建，医生使用名单中的手机号登录小程序后即可查看任务。
+          医生账号和审核项目已同时创建，医生使用名单中的手机号登录小程序后即可查看项目。
         </template>
       </a-result>
 
@@ -205,11 +205,11 @@
           <strong>{{ formatNumber(result.reused_account_count) }}</strong>
         </div>
         <div>
-          <span>已创建任务</span>
+          <span>已创建项目</span>
           <strong>{{ formatNumber(result.created_task_count) }}</strong>
         </div>
         <div>
-          <span>任务总积分</span>
+          <span>项目总积分</span>
           <strong>{{ formatPoints(resultTotalPoints) }}</strong>
         </div>
         <div>
@@ -226,7 +226,7 @@
         </div>
       </div>
 
-      <div class="batch-no">导入批次：{{ result.batch_no }}</div>
+      <div class="batch-no">项目编号：{{ result.batch_no }}</div>
 
       <div class="step-actions">
         <a-button type="primary" @click="close">完成</a-button>
@@ -467,7 +467,7 @@ const confirmImport = async () => {
       emit('success')
     }
   } catch {
-    Message.error('任务创建失败，本次未导入任何数据，请重试')
+    Message.error('项目创建失败，本次未导入任何数据，请重试')
   } finally {
     confirmLoading.value = false
   }

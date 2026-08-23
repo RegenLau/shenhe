@@ -25,20 +25,20 @@
             {{ detail.last_login_time || '—' }}。
           </template>
           <template v-else-if="accountDisabled">
-            账号已禁用，医生当前无法登录小程序；历史任务和计酬记录仍会保留。
+            账号已禁用，医生当前无法登录小程序；历史项目和计酬记录仍会保留。
           </template>
           <template v-else>
             账号待激活。医生首次使用 {{ maskPhone(detail.phone) }}
-            登录小程序后，即可查看已分配任务。
+            登录小程序后，即可查看已分配项目。
           </template>
         </a-alert>
 
         <section class="detail-section">
-          <h3>任务概况</h3>
+          <h3>项目概况</h3>
           <a-row :gutter="[12, 12]">
             <a-col :xs="12" :sm="6">
               <div class="metric-card">
-                <span>任务数</span>
+                <span>项目数</span>
                 <strong>{{ formatNumber(detail.task_count) }}</strong>
               </div>
             </a-col>
@@ -149,11 +149,11 @@
         </section>
 
         <section class="detail-section">
-          <h3>最近任务</h3>
+          <h3>最近项目</h3>
           <a-empty
             v-if="!detail.recent_tasks?.length"
             class="task-empty"
-            description="暂无已分配任务；通过任务管理创建或导入后将在这里显示"
+            description="暂无已分配项目；通过项目管理创建或导入后将在这里显示"
           />
           <a-table
             v-else
@@ -196,10 +196,10 @@ const detail = ref({})
 const statusUpdating = ref(false)
 
 const taskColumns = [
-  { title: '任务编号', dataIndex: 'task_no', width: 160 },
+  { title: '项目编号', dataIndex: 'task_no', width: 160 },
   { title: '状态', dataIndex: 'status', slotName: 'status', width: 90 },
   { title: '完成进度', dataIndex: 'progress', slotName: 'progress', width: 120 },
-  { title: '任务总积分', dataIndex: 'reward', slotName: 'reward', width: 110 }
+  { title: '项目总积分', dataIndex: 'reward', slotName: 'reward', width: 110 }
 ]
 
 const accountActive = computed(() => detail.value.account_status === 'active')
@@ -222,8 +222,8 @@ const accountStatusConfirm = computed(() => {
     return {
       title: '确认开启账号',
       content: detail.value.activation_time
-        ? '开启后医生可重新登录小程序并接收新任务，确认开启吗？'
-        : '开启后账号恢复为待激活状态，并可重新接收任务，确认开启吗？',
+        ? '开启后医生可重新登录小程序并接收新项目，确认开启吗？'
+        : '开启后账号恢复为待激活状态，并可重新接收项目，确认开启吗？',
       okText: '确认开启'
     }
   }
@@ -231,7 +231,7 @@ const accountStatusConfirm = computed(() => {
   return {
     title: '确认禁用账号',
     content:
-      '禁用后医生将无法登录小程序或接收新任务，历史任务和积分记录仍会保留。确认禁用吗？',
+      '禁用后医生将无法登录小程序或接收新项目，历史项目和积分记录仍会保留。确认禁用吗？',
     okText: '确认禁用'
   }
 })

@@ -4,11 +4,11 @@
       <div class="header-main">
         <a-button class="back-button" @click="goBack">
           <template #icon><icon-left /></template>
-          返回任务管理
+          返回项目管理
         </a-button>
         <div>
-          <h1>{{ batch.display_title || '批次详情' }}</h1>
-          <p>查看该批次下所有医生的任务完成进度</p>
+          <h1>{{ batch.display_title || '项目详情' }}</h1>
+          <p>查看该项目下所有医生的审核完成进度</p>
         </div>
       </div>
       <a-button :loading="downloading" @click="downloadProgress">
@@ -20,7 +20,7 @@
     <a-result
       v-if="!loading && errorMessage"
       status="error"
-      title="批次详情加载失败"
+      title="项目详情加载失败"
       :subtitle="errorMessage"
     >
       <template #extra>
@@ -31,7 +31,7 @@
     <a-spin v-else :loading="loading" class="batch-content">
       <template v-if="batch.batch_no">
         <a-alert type="info" show-icon class="batch-tip">
-          进度按医生汇总，下载文件包含该批次的基金会、项目、医生和任务进度信息。
+          进度按医生汇总，下载文件包含该项目的基金会、项目归属、医生和审核进度信息。
         </a-alert>
 
         <a-row :gutter="[16, 16]" class="summary-grid">
@@ -42,7 +42,7 @@
           </a-col>
           <a-col :xs="12" :sm="6">
             <a-card :bordered="false">
-              <a-statistic title="任务数" :value="batch.task_count" suffix="个" />
+              <a-statistic title="项目数" :value="batch.task_count" suffix="个" />
             </a-card>
           </a-col>
           <a-col :xs="12" :sm="6">
@@ -83,7 +83,7 @@
                   </div>
                 </template>
               </a-table-column>
-              <a-table-column title="任务数" data-index="task_count" :width="90" align="right" />
+              <a-table-column title="项目数" data-index="task_count" :width="90" align="right" />
               <a-table-column title="完成进度" data-index="progress_percent" :width="190">
                 <template #cell="{ record }">
                   <div class="progress-cell">
@@ -94,7 +94,7 @@
                   </div>
                 </template>
               </a-table-column>
-              <a-table-column title="任务状态" data-index="status" :width="105" align="center">
+              <a-table-column title="项目状态" data-index="status" :width="105" align="center">
                 <template #cell="{ record }">
                   <sa-dict :value="record.status" dict="task_status" />
                 </template>
@@ -104,21 +104,23 @@
                   <sa-dict :value="record.account_status" dict="doctor_account_status" />
                 </template>
               </a-table-column>
-              <a-table-column title="任务积分" data-index="total_reward_cent" :width="110" align="right">
+              <a-table-column title="项目积分" data-index="total_reward_cent" :width="110" align="right">
                 <template #cell="{ record }">{{ formatPoints(record.total_reward_cent) }}</template>
               </a-table-column>
-              <a-table-column title="最近任务时间" data-index="create_time" :width="165" />
+              <a-table-column title="最近项目时间" data-index="create_time" :width="165" />
               <a-table-column title="操作" :width="80" fixed="right" align="center">
                 <template #cell="{ record }">
-                  <a-link @click="openDoctorDetail(record)">详情</a-link>
+                  <a-link @click="openTask(record)">查看项目</a-link>
                 </template>
               </a-table-column>
             </template>
           </a-table>
-          <a-empty v-else description="该批次暂无医生进度数据" />
+          <a-empty v-else description="该项目暂无医生进度数据" />
         </a-card>
       </template>
     </a-spin>
+
+    <task-view ref="taskDetailRef" />
   </div>
 </template>
 
@@ -128,6 +130,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { Message } from '@arco-design/web-vue'
 import tool from '@/utils/tool'
 import taskApi from '@/api/product/task'
+import TaskView from './view.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -135,6 +138,7 @@ const batchKey = String(route.params.batchKey || '')
 const loading = ref(false)
 const downloading = ref(false)
 const errorMessage = ref('')
+const taskDetailRef = ref()
 const batch = reactive({ doctors: [] })
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
@@ -178,7 +182,7 @@ const downloadProgress = async () => {
       return
     }
     tool.download(response)
-    Message.success('批次进度数据已开始下载')
+    Message.success('项目进度数据已开始下载')
   } catch {
     Message.error('进度数据下载失败，请检查网络后重试')
   } finally {
@@ -187,13 +191,13 @@ const downloadProgress = async () => {
 }
 
 const goBack = () => router.push({ name: 'productTask' })
-const openDoctorDetail = (record) => {
-  const doctorKey = record.id || record.doctor_id || record.doctor_phone || record.doctor_name || ''
-  if (!doctorKey) return
-  router.push({
-    name: 'productTaskBatchDoctorDetail',
-    params: { batchKey, doctorKey: String(doctorKey) }
-  })
+const openTask = (record) => {
+  const taskId = record.task_ids?.[0]
+  if (!taskId) {
+    Message.error('未找到该医生对应的项目，请重新加载后再试')
+    return
+  }
+  taskDetailRef.value?.open(taskId)
 }
 
 onMounted(loadDetail)

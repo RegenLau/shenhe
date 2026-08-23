@@ -3,12 +3,12 @@
     <header class="page-header">
       <div>
         <h1>结算管理</h1>
-        <p>按任务批次查看结算进度，进入批次后处理每位医生的审核结算</p>
+        <p>按项目查看结算进度，进入项目后处理每位医生的审核结算</p>
       </div>
     </header>
 
     <a-alert type="info" show-icon>
-      结算与任务管理使用同一批次编号。点击“批次详情”查看该任务批次下的医生审核情况、结算积分及收款信息。
+      结算与项目管理使用同一项目编号。点击“项目详情”查看该项目下的医生审核情况、结算积分及收款信息。
     </a-alert>
 
     <a-alert v-if="summaryError" type="error" show-icon>
@@ -19,26 +19,26 @@
     </a-alert>
 
     <a-spin :loading="summaryLoading" class="summary-loading">
-      <section class="summary-grid" aria-label="任务批次结算统计">
+      <section class="summary-grid" aria-label="项目结算统计">
         <article class="metric-card">
-          <span>任务批次</span>
+          <span>项目</span>
           <strong>{{ summaryLoaded ? formatNumber(summary.total_batch_count) : '—' }}</strong>
-          <small>当前有结算记录的任务批次</small>
+          <small>当前有结算记录的项目</small>
         </article>
         <article class="metric-card">
-          <span>待导出批次</span>
+          <span>待导出项目</span>
           <strong>{{ summaryLoaded ? formatNumber(summary.pending_batch_count) : '—' }}</strong>
           <small>等待导出并交付基金会</small>
         </article>
         <article class="metric-card">
-          <span>结算中批次</span>
+          <span>结算中项目</span>
           <strong>{{ summaryLoaded ? formatNumber(summary.processing_batch_count) : '—' }}</strong>
           <small>已导出或部分完成</small>
         </article>
         <article class="metric-card">
           <span>结算总积分</span>
           <strong>{{ summaryLoaded ? formatPoints(summary.total_amount_cent) : '—' }}</strong>
-          <small>全部批次累计</small>
+          <small>全部项目累计</small>
         </article>
       </section>
     </a-spin>
@@ -61,16 +61,16 @@
     >
       <template #tableSearch>
         <a-col :xs="24" :sm="12">
-          <a-form-item field="keyword" label="批次或项目">
+          <a-form-item field="keyword" label="关键词">
             <a-input
               v-model="searchForm.keyword"
-              placeholder="批次编号、基金会、项目、项目标识或医生"
+              placeholder="项目编号、基金会、所属项目、项目标识或医生"
               allow-clear
             />
           </a-form-item>
         </a-col>
         <a-col :xs="24" :sm="12">
-          <a-form-item field="status" label="批次状态">
+          <a-form-item field="status" label="项目状态">
             <sa-select
               v-model="searchForm.status"
               dict="settlement_batch_status"
@@ -161,9 +161,9 @@ const loadList = async (params) => {
       tableError.value = ''
       return response
     }
-    tableError.value = response.message || '结算批次加载失败，请重新加载'
+    tableError.value = response.message || '结算项目加载失败，请重新加载'
   } catch {
-    tableError.value = '结算批次加载失败，请检查网络后重试'
+    tableError.value = '结算项目加载失败，请检查网络后重试'
   }
 
   return {
@@ -185,14 +185,14 @@ const options = reactive({
   pageLayout: 'normal',
   showSort: false,
   operationColumnWidth: 110,
-  view: { show: true, text: '批次详情', func: openBatch }
+  view: { show: true, text: '项目详情', func: openBatch }
 })
 
 const columns = reactive([
-  { title: '任务批次编号', dataIndex: 'batch_no', width: 210, fixed: 'left' },
+  { title: '项目编号', dataIndex: 'batch_no', width: 210, fixed: 'left' },
   { title: '项目归属', dataIndex: 'identifier_name', width: 220 },
   {
-    title: '批次状态',
+    title: '项目状态',
     dataIndex: 'status',
     type: 'dict',
     dict: 'settlement_batch_status',
@@ -207,7 +207,7 @@ const columns = reactive([
     align: 'right'
   },
   { title: '待结算积分', dataIndex: 'pending_amount_cent', width: 130, align: 'right' },
-  { title: '批次创建时间', dataIndex: 'created_at', width: 165 }
+  { title: '项目创建时间', dataIndex: 'created_at', width: 165 }
 ])
 
 const refresh = () => crudRef.value?.refresh()

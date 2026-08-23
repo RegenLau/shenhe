@@ -64,9 +64,9 @@
         </section>
 
         <section class="detail-section">
-          <h3>任务档位与积分</h3>
+          <h3>项目档位与积分</h3>
           <a-descriptions :column="1" bordered>
-            <a-descriptions-item label="任务档位">
+            <a-descriptions-item label="项目档位">
               <sa-dict
                 v-if="detail.final_level"
                 :value="detail.final_level"
@@ -74,7 +74,7 @@
               />
               <span v-else>—</span>
             </a-descriptions-item>
-            <a-descriptions-item label="任务积分">
+            <a-descriptions-item label="项目积分">
               <strong class="reward-text">{{ formatReward(detail.unit_reward_cent) }}</strong>
             </a-descriptions-item>
             <a-descriptions-item label="基础档位">
@@ -245,7 +245,7 @@ const statusAlert = computed(() => {
   if (detail.value.lifecycle_status === 'disabled') {
     return {
       type: 'error',
-      text: '该题目已停用，不会进入新的审核任务；已有任务和审核记录仍保留。'
+      text: '该题目已停用，不会进入新的审核项目；已有项目和审核记录仍保留。'
     }
   }
   if (detail.value.lifecycle_status === 'available') {

@@ -16,7 +16,7 @@
 
     <section v-if="currentStep === 1" class="step-content">
       <a-alert type="info" show-icon>
-        请使用当前任务批次导出的名单，将文件中的“结算状态”从“已导出”改为“已结算”后再上传。系统只会回写该任务批次中仍为“已导出”的记录。
+        请使用当前项目导出的名单，将文件中的“结算状态”从“已导出”改为“已结算”后再上传。系统只会回写该项目中仍为“已导出”的记录。
       </a-alert>
 
       <a-alert type="warning" show-icon>
@@ -160,7 +160,7 @@
     <section v-else class="step-content">
       <a-result status="success" title="结算状态更新完成">
         <template #subtitle>
-          已按结算单号更新当前批次的可结算记录，跳过记录保持原状态不变。
+          已按结算单号更新当前项目的可结算记录，跳过记录保持原状态不变。
         </template>
       </a-result>
 

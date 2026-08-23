@@ -8,7 +8,7 @@
     </header>
 
     <a-alert type="info" show-icon>
-      认证结果用于标识医生资质状态，不影响医生查看和执行已经分配的审核任务。
+      认证结果用于标识医生资质状态，不影响医生查看和执行已经分配的审核项目。
     </a-alert>
 
     <a-alert v-if="tableError" type="error" show-icon>

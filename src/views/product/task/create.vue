@@ -2,8 +2,8 @@
   <a-modal
     v-model:visible="visible"
     :width="tool.getDevice() === 'mobile' ? '100%' : '520px'"
-    title="创建任务"
-    ok-text="创建并分配任务"
+    title="创建项目"
+    ok-text="创建并分配项目"
     :mask-closable="false"
     :ok-loading="loading"
     unmount-on-close
@@ -127,14 +127,14 @@
           :min="100"
           :step="100"
           :precision="0"
-          placeholder="请输入要分配的任务积分"
+          placeholder="请输入要分配的项目积分"
           style="width: 100%"
         >
           <template #suffix>积分</template>
         </a-input-number>
       </a-form-item>
 
-      <a-form-item label="任务说明">
+      <a-form-item label="项目说明">
         <span class="readonly-text">
           系统将从题库中随机匹配 100 / 200 / 300 积分题目，精确组成目标积分
         </span>
@@ -146,7 +146,7 @@
     </a-form>
 
     <a-alert type="info" show-icon>
-      提交时会按题库实时库存完成精确匹配；库存不能组成目标积分时不会创建任务。任务创建后立即分配给所选医生。
+      提交时会按题库实时库存完成精确匹配；库存不能组成目标积分时不会创建项目。项目创建后立即分配给所选医生。
     </a-alert>
   </a-modal>
 </template>
@@ -181,7 +181,7 @@ const rules = {
   foundation_id: [{ required: true, message: '请选择所属基金会' }],
   project_id: [{ required: true, message: '请选择所属项目' }],
   identifier_id: [{ required: true, message: '请选择项目标识' }],
-  doctor_id: [{ required: true, message: '请选择要分配任务的医生' }],
+  doctor_id: [{ required: true, message: '请选择要分配项目的医生' }],
   target_points: [
     { required: true, message: '请输入目标积分' },
     {
@@ -304,7 +304,7 @@ const accountHint = computed(() => {
   if (selectedDoctor.value.account_status === 'disabled') {
     return {
       type: 'error',
-      text: `“${selectedDoctor.value.name}”账号已禁用，无法分配新任务，请先到医生管理开启账号或重新选择医生。`
+      text: `“${selectedDoctor.value.name}”账号已禁用，无法分配新项目，请先到医生管理开启账号或重新选择医生。`
     }
   }
 
@@ -312,14 +312,14 @@ const accountHint = computed(() => {
   if (eligibilityError) {
     return {
       type: 'error',
-      text: `“${selectedDoctor.value.name}”${eligibilityError}，无法分配审核任务。`
+      text: `“${selectedDoctor.value.name}”${eligibilityError}，无法分配审核项目。`
     }
   }
 
   if (selectedDoctor.value.account_status === 'active') {
     return {
       type: 'success',
-      text: `“${selectedDoctor.value.name}”账号已激活，任务创建后立即出现在其小程序任务列表中。`
+      text: `“${selectedDoctor.value.name}”账号已激活，项目创建后立即出现在其小程序项目列表中。`
     }
   }
 
@@ -327,7 +327,7 @@ const accountHint = computed(() => {
     type: 'info',
     text: `“${selectedDoctor.value.name}”账号待激活，医生首次使用 ${maskPhone(
       selectedDoctor.value.phone
-    )} 登录小程序后即可查看任务。`
+    )} 登录小程序后即可查看项目。`
   }
 })
 
@@ -407,8 +407,8 @@ const submit = async (done) => {
       const matchedCount = Number(response.data?.item_count || 0)
       Message.success(
         matchedCount
-          ? `任务已创建，系统已匹配 ${matchedCount} 道题目`
-          : '任务已创建并分配给所选医生'
+          ? `项目已创建，系统已匹配 ${matchedCount} 道题目`
+          : '项目已创建并分配给所选医生'
       )
       emit('success')
       done(true)
@@ -423,7 +423,7 @@ const submit = async (done) => {
       loadOptionsData()
     }
   } catch {
-    Message.error('任务创建失败，请检查网络后重试')
+    Message.error('项目创建失败，请检查网络后重试')
   } finally {
     loading.value = false
   }

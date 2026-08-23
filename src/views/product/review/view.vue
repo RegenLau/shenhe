@@ -25,7 +25,7 @@
             <a-descriptions-item label="记录编号">
               {{ detail.review_no || '—' }}
             </a-descriptions-item>
-            <a-descriptions-item label="任务编号">
+            <a-descriptions-item label="项目编号">
               {{ detail.task_no || '—' }}
             </a-descriptions-item>
             <a-descriptions-item label="审核医生">

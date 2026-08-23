@@ -2,7 +2,7 @@
   <a-drawer
     v-model:visible="visible"
     width="min(900px, 100vw)"
-    title="任务详情"
+    title="项目详情"
     :footer="false"
     unmount-on-close
   >
@@ -10,7 +10,7 @@
       <a-result
         v-if="!loading && errorMessage"
         status="error"
-        title="任务详情加载失败"
+        title="项目详情加载失败"
         :subtitle="errorMessage"
       >
         <template #extra>
@@ -25,19 +25,19 @@
           class="account-alert"
         >
           <template v-if="accountActive">
-            医生账号已激活，当前任务已显示在该医生的小程序任务列表中。
+            医生账号已激活，当前项目已显示在该医生的小程序项目列表中。
           </template>
           <template v-else-if="accountDisabled">
-            医生账号已禁用，当前无法登录小程序；该历史任务和计酬记录仍会保留。
+            医生账号已禁用，当前无法登录小程序；该历史项目和计酬记录仍会保留。
           </template>
           <template v-else>
             医生账号待激活。医生首次使用 {{ maskPhone(detail.doctor_phone) }}
-            登录小程序后，即可查看该任务。
+            登录小程序后，即可查看该项目。
           </template>
         </a-alert>
 
         <section class="detail-section">
-          <h3>任务进度</h3>
+          <h3>项目进度</h3>
           <div class="progress-summary">
             <div>
               <strong>{{ progressPercent }}%</strong>
@@ -52,12 +52,12 @@
         </section>
 
         <section class="detail-section">
-          <h3>任务信息</h3>
+          <h3>项目信息</h3>
           <a-descriptions :column="1" bordered>
-            <a-descriptions-item label="任务名称">
+            <a-descriptions-item label="项目名称">
               {{ detail.display_title || '—' }}
             </a-descriptions-item>
-            <a-descriptions-item label="任务编号">
+            <a-descriptions-item label="项目编号">
               {{ detail.task_no }}
             </a-descriptions-item>
             <a-descriptions-item label="所属基金会">
@@ -88,7 +88,7 @@
             <a-descriptions-item label="创建方式">
               <sa-dict :value="detail.source_type" dict="task_source" render="span" />
             </a-descriptions-item>
-            <a-descriptions-item label="导入批次">
+            <a-descriptions-item label="导入项目编号">
               {{ detail.import_batch_no || '—' }}
             </a-descriptions-item>
             <a-descriptions-item label="名单创建日期">
@@ -125,7 +125,7 @@
                 <a-tag color="red">C {{ levelCount('C') }}</a-tag>
               </div>
             </a-descriptions-item>
-            <a-descriptions-item label="任务总积分">
+            <a-descriptions-item label="项目总积分">
               <strong class="money-text">
                 {{ formatPoints(detail.total_reward_cent) }}
               </strong>
@@ -198,14 +198,14 @@
                   </a-tooltip>
                 </template>
               </a-table-column>
-              <a-table-column title="任务档位" data-index="final_level" :width="100" align="center">
+              <a-table-column title="项目档位" data-index="final_level" :width="100" align="center">
                 <template #cell="{ record }">
                   <a-tag :color="levelColor(record.final_level)">
                     {{ record.final_level || '—' }}
                   </a-tag>
                 </template>
               </a-table-column>
-              <a-table-column title="任务积分" data-index="unit_reward_cent" :width="110" align="right">
+              <a-table-column title="项目积分" data-index="unit_reward_cent" :width="110" align="right">
                 <template #cell="{ record }">
                   {{ formatPoints(record.unit_reward_cent) }}
                 </template>

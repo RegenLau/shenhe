@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width={{WIDTH}}, initial-scale=1">
+  <title>{{TITLE}}</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --canvas-width: {{WIDTH}}px;
+      --canvas-min-height: {{MIN_HEIGHT}}px;
+      --canvas-background: #ffffff;
+      --canvas-foreground: #111111;
+      --font-ui: {{UI_FONT_STACK}};
+      --ios-status-height: 44px;
+      --ios-content-min-height: 734px;
+      --ios-home-height: 34px;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-synthesis: none;
+    }
+
+    html,
+    body {
+      margin: 0;
+      min-height: 100%;
+      background: #e9e9e9;
+      font-family: var(--font-ui);
+    }
+
+    body { width: var(--canvas-width); }
+
+    .capture-root {
+      width: var(--canvas-width);
+      min-height: var(--canvas-min-height);
+      overflow: hidden;
+      color: var(--canvas-foreground);
+      background-color: var(--canvas-background);
+    }
+
+    .screen-content {
+      position: relative;
+      width: 100%;
+      background-color: var(--canvas-background);
+    }
+
+    .capture-root[data-device="mobile"] {
+      display: flex;
+      flex-direction: column;
+    }
+
+    [data-ios-status-bar] {
+      display: flex;
+      flex: 0 0 var(--ios-status-height);
+      align-items: center;
+      justify-content: space-between;
+      height: var(--ios-status-height);
+      padding: 0 16px 0 22px;
+      color: var(--ios-system-foreground, #111111);
+      background-color: var(--canvas-background);
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: -0.2px;
+    }
+
+    .ios-status-icons {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    [data-ios-content] {
+      min-height: var(--ios-content-min-height);
+    }
+
+    [data-ios-home-area] {
+      position: relative;
+      flex: 0 0 var(--ios-home-height);
+      height: var(--ios-home-height);
+      background-color: var(--canvas-background);
+    }
+
+    [data-ios-home-indicator] {
+      position: absolute;
+      left: 50%;
+      bottom: 8px;
+      width: 134px;
+      height: 5px;
+      border-radius: 999px;
+      background-color: var(--ios-system-foreground, #111111);
+      transform: translateX(-50%);
+    }
+  </style>
+</head>
+<body>
+  <main class="capture-root" data-figma-capture-root data-device="{{DEVICE}}" data-ui-font="{{UI_FONT}}" data-required-local-fonts="{{REQUIRED_LOCAL_FONTS}}">
+{{CAPTURE_CONTENT}}
+  </main>
+  <script>
+    const captureRoot = document.querySelector("[data-figma-capture-root]");
+    const fontReadiness = document.fonts ? document.fonts.ready : Promise.resolve();
+    const uiFamilyCheck = fontReadiness.then(() => {
+      const computedUiFamily = getComputedStyle(captureRoot).fontFamily
+        .split(",")[0]
+        .trim()
+        .replace(/^["']|["']$/g, "");
+      if (computedUiFamily !== captureRoot.dataset.uiFont) {
+        throw new Error(`Computed UI font does not match data-ui-font: ${computedUiFamily}`);
+      }
+    });
+
+    window.captureReady = Promise.all([
+      uiFamilyCheck,
+      fontReadiness,
+      ...Array.from(document.images, (image) => image.complete
+        ? Promise.resolve()
+        : new Promise((resolve, reject) => {
+            image.addEventListener("load", resolve, { once: true });
+            image.addEventListener("error", reject, { once: true });
+          }))
+    ]);
+  </script>
+</body>
+</html>

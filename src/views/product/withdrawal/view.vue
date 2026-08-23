@@ -85,9 +85,9 @@
 
         <section class="detail-section">
           <div class="section-heading">
-            <h3>来源任务</h3>
+            <h3>来源项目</h3>
             <span>
-              共 {{ formatNumber(sourceTasks.length) }} 个任务 ·
+              共 {{ formatNumber(sourceTasks.length) }} 个项目 ·
               {{ formatNumber(sourceReviewCount) }} 条审核
             </span>
           </div>
@@ -95,7 +95,7 @@
           <a-empty
             v-if="!sourceTasks.length"
             class="task-empty"
-            description="暂无可展示的来源任务"
+            description="暂无可展示的来源项目"
           />
           <a-table
             v-else
@@ -134,7 +134,7 @@ const detail = ref({})
 
 const taskColumns = [
   {
-    title: '任务编号',
+    title: '项目编号',
     dataIndex: 'task_no',
     slotName: 'task_no',
     width: 170

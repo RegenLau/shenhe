@@ -7,7 +7,7 @@
           返回结算管理
         </a-button>
         <div class="header-title">
-          <h1>{{ batch.display_title || '任务批次结算' }}</h1>
+          <h1>{{ batch.display_title || '项目结算' }}</h1>
         </div>
       </div>
       <a-space wrap>
@@ -33,7 +33,7 @@
     <a-result
       v-if="!loading && errorMessage"
       status="error"
-      title="任务批次结算加载失败"
+      title="项目结算加载失败"
       :subtitle="errorMessage"
     >
       <template #extra>
@@ -44,7 +44,7 @@
     <a-spin v-else :loading="loading" class="batch-content">
       <template v-if="batch.batch_no">
         <a-alert type="info" show-icon class="batch-tip">
-          当前结算范围与任务管理中的同编号批次一致。单个医生在本批次的审核条数全部完成后才能结算；部分医生完成时，只导出已完成医生的名单，基金会完成结算后，请在本批次导入名单回写状态。
+          当前结算范围与项目管理中的同编号项目一致。单个医生在本项目的审核条数全部完成后才能结算；部分医生完成时，只导出已完成医生的名单，基金会完成结算后，请在本项目导入名单回写状态。
           点击“导出结算文件”会分别下载结算表和对应医生的审核记录，审核记录包含问题、答案及审核意见。
         </a-alert>
 
@@ -146,7 +146,7 @@
               <a-table-column title="审核完成时间" data-index="review_completed_at" :width="165" />
             </template>
           </a-table>
-          <a-empty v-else description="当前批次暂无医生审核结算" />
+          <a-empty v-else description="当前项目暂无医生审核结算" />
         </a-card>
       </template>
     </a-spin>
@@ -234,7 +234,7 @@ const exportBatch = async () => {
 
 const confirmExport = () => {
   Modal.confirm({
-    title: '确认导出当前任务批次的结算文件',
+    title: '确认导出当前项目的结算文件',
     content:
       '本次将分别下载结算表和医生审核记录。文件包含医生联系方式、银行卡号及审核问答等业务信息，仅限结算使用，请妥善保管。',
     width: 'min(420px, calc(100vw - 32px))',

@@ -4,12 +4,12 @@
       <div>
         <div class="page-title-row">
           <h1>审核题库</h1>
-          <a-tooltip content="查看任务档位说明">
+          <a-tooltip content="查看项目档位说明">
             <a-button
               type="text"
               shape="circle"
               class="pricing-explain-button"
-              aria-label="查看任务档位说明"
+              aria-label="查看项目档位说明"
               @click="pricingModalVisible = true"
             >
               <template #icon><icon-info-circle /></template>
@@ -43,13 +43,13 @@
 
     <a-modal
       v-model:visible="pricingModalVisible"
-      title="任务档位说明"
+      title="项目档位说明"
       :footer="false"
       :width="520"
       unmount-on-close
     >
       <p class="pricing-modal-intro">
-        系统根据问题类型和风险规则计算最终档位，创建任务时按对应积分计入医生任务额度。
+        系统根据问题类型和风险规则计算最终档位，创建项目时按对应积分计入医生项目额度。
       </p>
       <div class="pricing-modal-list">
         <div v-for="item in pricingDisplayRows" :key="item.value" class="pricing-modal-item">
@@ -149,7 +149,7 @@
           </a-form-item>
         </a-col>
         <a-col :xs="24" :sm="8">
-          <a-form-item field="final_level" label="任务档位">
+          <a-form-item field="final_level" label="项目档位">
             <sa-select
               v-model="searchForm.final_level"
               dict="question_level"
@@ -509,7 +509,7 @@ const statusAction = (record) => {
 const statusConfirmText = (record) => {
   const action = statusAction(record)
   if (action.status === 'disabled') {
-    return `停用后该题目不再进入新的审核任务，确定停用“${record.question_no || '该题目'}”吗？`
+    return `停用后该题目不再进入新的审核项目，确定停用“${record.question_no || '该题目'}”吗？`
   }
   return `确定将“${record.question_no || '该题目'}”${action.label}吗？`
 }
@@ -599,8 +599,8 @@ const columns = reactive([
   { title: '规格', dataIndex: 'drug_specification', width: 150 },
   { title: '生产厂家', dataIndex: 'drug_manufacturer', width: 190 },
   { title: '审核问题', dataIndex: 'question', width: 320 },
-  { title: '任务档位', dataIndex: 'final_level', width: 105, align: 'center' },
-  { title: '任务积分', dataIndex: 'unit_reward_cent', width: 120, align: 'right' },
+  { title: '项目档位', dataIndex: 'final_level', width: 105, align: 'center' },
+  { title: '项目积分', dataIndex: 'unit_reward_cent', width: 120, align: 'right' },
   { title: '问题类型', dataIndex: 'type_info', width: 210 },
   { title: '题库状态', dataIndex: 'lifecycle_status', width: 105, align: 'center' },
   { title: '更新时间', dataIndex: 'update_time', width: 165 }

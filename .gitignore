@@ -8,3 +8,4 @@ stats.html
 mock-api/*.log
 .playwright-cli/
 .playwright-mcp/
+.ai-to-figma/

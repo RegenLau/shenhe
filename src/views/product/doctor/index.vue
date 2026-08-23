@@ -8,7 +8,7 @@
     </header>
 
     <a-alert type="info" show-icon class="account-tip">
-      医生账号可在本页手动新增，或由名单导入按手机号自动创建。待激活医生使用绑定手机号登录小程序后，即可看到已分配任务；任务全部完成后，对应积分计入累计积分。
+      医生账号可在本页手动新增，或由名单导入按手机号自动创建。待激活医生使用绑定手机号登录小程序后，即可看到已分配项目；项目全部完成后，对应积分计入累计积分。
     </a-alert>
 
     <a-alert v-if="tableError" type="error" show-icon class="table-error">

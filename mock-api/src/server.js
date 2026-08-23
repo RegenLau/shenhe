@@ -1151,7 +1151,7 @@ function buildSettlementTaskRows(records = []) {
       settlement_block_reason: eligibility.eligible
         ? ''
         : eligibility.duplicate_task
-          ? '当前批次存在重复医生任务，暂不能结算'
+          ? '当前项目存在重复医生，暂不能结算'
           : `当前医生已完成 ${eligibility.completed_review_count} / ${eligibility.assigned_review_count} 条审核，审核未完成，不能结算`,
       review_completed_at: eligibility.eligible ? task?.complete_time || null : null,
       bank_name: withdrawal.bank_name,
@@ -1236,7 +1236,7 @@ function buildSettlementBatches(records = []) {
     return {
       id: batchNo,
       batch_no: batchNo,
-      display_title: `任务批次 ${batchNo}`,
+      display_title: `项目 ${batchNo}`,
       foundation_name: hasMultipleOrganizations
         ? '多个基金会'
         : firstOrganization.foundation_name || '',
@@ -1343,7 +1343,7 @@ function syncWithdrawalWorkbench() {
 
   const withdrawalTodo = {
     id: 'withdrawal_pending',
-    title: '任务批次待结算',
+    title: '项目待结算',
     description: `${withdrawalSummary.pending_count} 条审核结算记录待导出并提交基金会。`,
     count: withdrawalSummary.pending_count,
     level: 'warning'
@@ -1646,7 +1646,7 @@ function summarizeTaskBatch(tasksInBatch, batchKey) {
     id: batchKey,
     batch_key: batchKey,
     batch_no: batchNo,
-    display_title: isImportBatch ? `名单导入批次 ${batchNo}` : `手工任务 ${batchNo}`,
+    display_title: isImportBatch ? `名单导入项目 ${batchNo}` : `手工创建项目 ${batchNo}`,
     source_type: sourceType,
     import_date: isImportBatch ? firstTask.import_date || null : null,
     foundation_name: hasMultipleOrganizations
@@ -1715,6 +1715,7 @@ function buildTaskBatchDoctors(batchTasks) {
       item_count: 0,
       completed_count: 0,
       total_reward_cent: 0,
+      task_ids: [],
       task_nos: [],
       create_time: task.create_time || null
     }
@@ -1725,6 +1726,7 @@ function buildTaskBatchDoctors(batchTasks) {
       Math.max(Number(task.item_count) || 0, 0)
     )
     row.total_reward_cent += Number(task.total_reward_cent || 0)
+    row.task_ids.push(task.id)
     row.task_nos.push(task.task_no)
     if (String(task.create_time || '') > String(row.create_time || '')) {
       row.create_time = task.create_time
@@ -1757,94 +1759,6 @@ function findTaskBatch(batchKey) {
   return {
     ...batch,
     doctors: buildTaskBatchDoctors(batchTasks)
-  }
-}
-
-function findTaskBatchDoctor(batchKey, doctorKey) {
-  const normalizedBatchKey = String(batchKey || '').trim()
-  const normalizedDoctorKey = String(doctorKey || '').trim()
-  if (!normalizedBatchKey || !normalizedDoctorKey) return null
-
-  const batchTasks = getTaskBatchGroups().get(normalizedBatchKey)
-  if (!batchTasks || batchTasks.length === 0) return null
-
-  const doctorTasks = batchTasks.filter((task) => {
-    const taskDoctorKey = String(task.doctor_id || task.doctor_phone || task.doctor_name)
-    return taskDoctorKey === normalizedDoctorKey
-  })
-  if (doctorTasks.length === 0) return null
-
-  const doctor = buildTaskBatchDoctors(batchTasks).find(
-    (item) => String(item.id) === normalizedDoctorKey
-  )
-  if (!doctor) return null
-
-  const taskDetails = doctorTasks
-    .map((task) => {
-      const hydratedTask = hydrateTask(task)
-      const itemCount = Math.max(Number(task.item_count) || 0, 0)
-      const completedCount = Math.min(
-        Math.max(Number(task.completed_count) || 0, 0),
-        itemCount
-      )
-      const taskReviews = reviews.filter((review) => review.task_id === task.id)
-      const approvedCount = taskReviews.filter(
-        (review) => review.result === 'approved'
-      ).length
-      const rejectedCount = taskReviews.filter(
-        (review) => review.result === 'rejected'
-      ).length
-      const reviewCount = taskReviews.length
-
-      return {
-        ...hydratedTask,
-        status: taskProgressStatus(task),
-        item_count: itemCount,
-        completed_count: completedCount,
-        progress_percent: itemCount
-          ? Math.round((completedCount / itemCount) * 100)
-          : 0,
-        review_count: reviewCount,
-        approved_count: approvedCount,
-        rejected_count: rejectedCount,
-        review_status:
-          reviewCount === 0
-            ? completedCount > 0
-              ? 'in_progress'
-              : 'pending'
-            : reviewCount < completedCount
-              ? 'in_progress'
-              : rejectedCount > 0
-                ? 'rejected'
-                : 'approved'
-      }
-    })
-    .sort((left, right) => String(right.create_time || '').localeCompare(String(left.create_time || '')))
-
-  const summary = taskDetails.reduce(
-    (result, task) => {
-      result.task_count += 1
-      result.item_count += task.item_count
-      result.completed_count += task.completed_count
-      result.reviewed_count += task.review_count
-      result.approved_count += task.approved_count
-      result.rejected_count += task.rejected_count
-      return result
-    },
-    {
-      task_count: 0,
-      item_count: 0,
-      completed_count: 0,
-      reviewed_count: 0,
-      approved_count: 0,
-      rejected_count: 0
-    }
-  )
-
-  return {
-    doctor,
-    summary,
-    tasks: taskDetails
   }
 }
 
@@ -1916,11 +1830,11 @@ function validateTargetPoints(value) {
   const targetPoints = Number(value)
 
   if (!Number.isInteger(targetPoints) || targetPoints < 100) {
-    return { error: '任务积分须为不小于 100 的整数' }
+    return { error: '项目积分须为不小于 100 的整数' }
   }
 
   if (targetPoints % 100 !== 0) {
-    return { error: '任务积分须为 100 的整数倍' }
+    return { error: '项目积分须为 100 的整数倍' }
   }
 
   return { targetPoints }
@@ -1928,7 +1842,7 @@ function validateTargetPoints(value) {
 
 function doctorReviewEligibilityError(doctor) {
   if (doctor.training_exam_status !== 'passed') {
-    return '该医生尚未通过审核培训与考试，无法分配任务'
+    return '该医生尚未通过审核培训与考试，无法分配项目'
   }
 
   if (!['A', 'B', 'C'].includes(doctor.max_review_level)) {
@@ -2177,7 +2091,7 @@ function analyzeTaskImportRows(sourceRows, fileName, seed) {
   const header = sourceRows[0].map((value) => String(value || '').trim())
   const nameIndex = header.findIndex((value) => ['姓名', '医生姓名'].includes(value))
   const phoneIndex = header.indexOf('手机号')
-  const pointsIndex = header.findIndex((value) => ['任务积分', '目标积分'].includes(value))
+  const pointsIndex = header.findIndex((value) => ['项目积分', '任务积分', '目标积分'].includes(value))
   const dateIndex = header.findIndex((value) => ['创建日期', '导入日期', '日期'].includes(value))
   const foundationIndex = header.findIndex((value) =>
     ['基金会名称', '基金会'].includes(value)
@@ -2202,7 +2116,7 @@ function analyzeTaskImportRows(sourceRows, fileName, seed) {
   ) {
     return {
       error:
-        '模板字段不完整，必须包含医生姓名、手机号、任务积分、创建日期、基金会名称、项目名称和项目标识'
+        '模板字段不完整，必须包含医生姓名、手机号、项目积分、创建日期、基金会名称、项目名称和项目标识'
     }
   }
 
@@ -2253,7 +2167,7 @@ function analyzeTaskImportRows(sourceRows, fileName, seed) {
 
     const pointsValidation = validateTargetPoints(targetPoints)
     if (!/^\d+$/.test(pointsText) || pointsValidation.error) {
-      errors.push(pointsValidation.error || '任务积分须为正整数')
+      errors.push(pointsValidation.error || '项目积分须为正整数')
     }
 
     if (!createDateText) errors.push('创建日期不能为空')
@@ -2315,12 +2229,12 @@ function analyzeTaskImportRows(sourceRows, fileName, seed) {
       errors.push('同一手机号在名单中的姓名不一致')
     }
     if (createDate && findImportedTask(doctorPhone, createDate)) {
-      errors.push(`该医生在 ${createDate} 已导入过任务，请勿重复导入`)
+      errors.push(`该医生在 ${createDate} 已导入过项目，请勿重复导入`)
     }
 
     const doctor = doctors.find((item) => item.phone === doctorPhone)
     if (doctor && doctor.name !== doctorName) errors.push(`手机号已绑定医生“${doctor.name}”`)
-    if (doctor?.account_status === 'disabled') errors.push('医生账号已禁用，不能分配新任务')
+    if (doctor?.account_status === 'disabled') errors.push('医生账号已禁用，不能分配新项目')
     const eligibilityError = doctor ? doctorReviewEligibilityError(doctor) : ''
     if (eligibilityError) errors.push(eligibilityError)
 
@@ -3279,11 +3193,11 @@ app.post('/core/product/doctor/exportPendingActivation', (req, res) => {
   const exportTime = formatDateTime()
   const sourceLabels = {
     import: '名单导入',
-    manual: '手动分配任务',
+    manual: '手动分配项目',
     mini_program: '小程序注册'
   }
   const rows = [
-    ['姓名', '手机号', '待接任务单数', '待接审核条数', '账号创建时间', '账号来源'],
+    ['姓名', '手机号', '待接项目数', '待接审核条数', '账号创建时间', '账号来源'],
     ...pendingDoctors.map((doctor) => [
       doctor.name,
       toExcelText(doctor.phone, /^\d{11}$/),
@@ -3545,7 +3459,7 @@ app.get('/core/product/withdrawal/batch/index', (req, res) => {
   const limit = req.query.limit === undefined ? 10 : Number(req.query.limit)
 
   if (status && !settlementBatchStatuses.includes(status)) {
-    res.json(failure(422, '任务批次结算状态筛选值无效'))
+    res.json(failure(422, '项目结算状态筛选值无效'))
     return
   }
 
@@ -3590,7 +3504,7 @@ app.get('/core/product/withdrawal/batch/read', (req, res) => {
   const batchNo = String(req.query.batch_no || '').trim()
 
   if (!batchNo) {
-    res.json(failure(422, '请提供任务批次编号'))
+    res.json(failure(422, '请提供项目编号'))
     return
   }
 
@@ -3599,7 +3513,7 @@ app.get('/core/product/withdrawal/batch/read', (req, res) => {
   )
 
   if (!batch) {
-    res.json(failure(404, '未找到对应任务批次的结算记录'))
+    res.json(failure(404, '未找到对应项目的结算记录'))
     return
   }
 
@@ -3674,7 +3588,7 @@ app.post('/core/product/withdrawal/settlementImportPreview', (req, res) => {
   const fileContent = String(req.body?.file_content || '')
 
   if (!batchNo) {
-    res.json(failure(422, '请先进入要回写的任务批次'))
+    res.json(failure(422, '请先进入要回写的项目'))
     return
   }
 
@@ -3682,7 +3596,7 @@ app.post('/core/product/withdrawal/settlementImportPreview', (req, res) => {
     (item) => item.batch_no === batchNo
   )
   if (!targetBatch) {
-    res.json(failure(404, '任务批次不存在或暂无结算记录，请返回列表后重试'))
+    res.json(failure(404, '项目不存在或暂无结算记录，请返回列表后重试'))
     return
   }
 
@@ -3718,7 +3632,7 @@ app.post('/core/product/withdrawal/settlementImportPreview', (req, res) => {
   }
 
   if (csvRows.length < 2) {
-    res.json(failure(422, '名单中没有可更新的任务结算记录'))
+    res.json(failure(422, '名单中没有可更新的结算记录'))
     return
   }
 
@@ -3768,10 +3682,10 @@ app.post('/core/product/withdrawal/settlementImportPreview', (req, res) => {
       validationMessage = '系统中不存在该结算记录，已跳过'
     } else if (getWithdrawalTaskBatchNo(withdrawal) !== batchNo) {
       validationStatus = 'invalid'
-      validationMessage = '该结算记录不属于当前批次，已跳过'
+      validationMessage = '该结算记录不属于当前项目，已跳过'
     } else if (!getSettlementDoctorEligibility(withdrawal).eligible) {
       validationStatus = 'invalid'
-      validationMessage = '该医生在当前批次还有审核条数未完成，不能结算，已跳过'
+      validationMessage = '该医生在当前项目还有审核条数未完成，不能结算，已跳过'
     } else if (currentStatus === 'pending') {
       validationStatus = 'skipped'
       validationMessage = '当前仍为待导出，仅已导出记录可结算，已跳过'
@@ -3892,7 +3806,7 @@ app.post('/core/product/withdrawal/settlementImportConfirm', (req, res) => {
         skipped_count: skippedCount,
         settled_time: updatedCount > 0 ? settledTime : null
       },
-      `已更新 ${updatedCount} 条任务结算记录，跳过 ${skippedCount} 条`
+      `已更新 ${updatedCount} 条结算记录，跳过 ${skippedCount} 条`
     )
   )
 })
@@ -3972,7 +3886,7 @@ app.post('/core/product/withdrawal/exportReviewRecords', (req, res) => {
   const batchNo = String(req.body?.batch_no || '').trim()
 
   if (!batchNo) {
-    res.json(failure(422, '请提供要导出的任务批次'))
+    res.json(failure(422, '请提供要导出的项目'))
     return
   }
 
@@ -3980,7 +3894,7 @@ app.post('/core/product/withdrawal/exportReviewRecords', (req, res) => {
     (item) => item.batch_no === batchNo
   )
   if (!batch) {
-    res.json(failure(404, '任务批次不存在或暂无结算记录，请返回列表后重试'))
+    res.json(failure(404, '项目不存在或暂无结算记录，请返回列表后重试'))
     return
   }
 
@@ -3997,17 +3911,17 @@ app.post('/core/product/withdrawal/exportReviewRecords', (req, res) => {
     )
 
   if (pendingWithdrawals.length === 0) {
-    res.json(failure(422, '当前批次暂无待导出的医生结算记录'))
+    res.json(failure(422, '当前项目暂无待导出的医生结算记录'))
     return
   }
 
   const exportTime = formatDateTime()
   const rows = [
     [
-      '任务批次编号',
+      '项目编号',
       '结算单号',
       '审核记录编号',
-      '任务编号',
+      '分配编号',
       '医生ID',
       '医生姓名',
       '手机号',
@@ -4030,7 +3944,7 @@ app.post('/core/product/withdrawal/exportReviewRecords', (req, res) => {
   ]
 
   if (rows.length === 1) {
-    res.json(failure(422, '当前批次没有可导出的医生审核记录'))
+    res.json(failure(422, '当前项目没有可导出的医生审核记录'))
     return
   }
 
@@ -4050,7 +3964,7 @@ app.post('/core/product/withdrawal/export', (req, res) => {
   const batchNo = String(req.body?.batch_no || '').trim()
 
   if (!batchNo) {
-    res.json(failure(422, '请提供要导出的任务批次'))
+    res.json(failure(422, '请提供要导出的项目'))
     return
   }
 
@@ -4058,7 +3972,7 @@ app.post('/core/product/withdrawal/export', (req, res) => {
     (item) => item.batch_no === batchNo
   )
   if (!batch) {
-    res.json(failure(404, '任务批次不存在或暂无结算记录，请返回列表后重试'))
+    res.json(failure(404, '项目不存在或暂无结算记录，请返回列表后重试'))
     return
   }
 
@@ -4075,14 +3989,14 @@ app.post('/core/product/withdrawal/export', (req, res) => {
     )
 
   if (pendingWithdrawals.length === 0) {
-    res.json(failure(422, '当前批次暂无待导出的医生结算记录'))
+    res.json(failure(422, '当前项目暂无待导出的医生结算记录'))
     return
   }
 
   const exportTime = formatDateTime()
   const rows = [
     [
-      '任务批次编号',
+      '项目编号',
       '结算单号',
       '记录时间',
       '姓名',
@@ -4455,7 +4369,7 @@ app.get('/core/product/task/batches', (req, res) => {
   const allowedSourceTypes = ['manual', 'import']
 
   if (sourceType && !allowedSourceTypes.includes(sourceType)) {
-    res.json(failure(422, '批次来源筛选值无效'))
+    res.json(failure(422, '项目来源筛选值无效'))
     return
   }
 
@@ -4479,25 +4393,16 @@ app.get('/core/product/task/batches', (req, res) => {
 app.get('/core/product/task/batches/read', (req, res) => {
   const batch = findTaskBatch(req.query.batch_key)
   if (!batch) {
-    res.json(failure(404, '未找到对应任务批次'))
+    res.json(failure(404, '未找到对应项目'))
     return
   }
   res.json(success(batch))
 })
 
-app.get('/core/product/task/batches/doctor-read', (req, res) => {
-  const detail = findTaskBatchDoctor(req.query.batch_key, req.query.doctor_key)
-  if (!detail) {
-    res.json(failure(404, '未找到该批次下的医生进度'))
-    return
-  }
-  res.json(success(detail))
-})
-
 app.get('/core/product/task/batches/progress', (req, res) => {
   const batch = findTaskBatch(req.query.batch_key)
   if (!batch) {
-    res.json(failure(404, '未找到对应任务批次'))
+    res.json(failure(404, '未找到对应项目'))
     return
   }
 
@@ -4508,7 +4413,7 @@ app.get('/core/product/task/batches/progress', (req, res) => {
   }
   const rows = [
     [
-      '批次编号',
+      '项目编号',
       '基金会名称',
       '项目名称',
       '项目标识',
@@ -4516,13 +4421,13 @@ app.get('/core/product/task/batches/progress', (req, res) => {
       '手机号',
       '医院',
       '科室',
-      '任务数',
-      '任务题数',
+      '项目数',
+      '项目题数',
       '已完成题数',
       '完成进度',
-      '任务状态',
+      '项目状态',
       '账号状态',
-      '最近任务时间'
+      '最近项目时间'
     ]
   ]
   const accountStatusLabels = {
@@ -4570,12 +4475,12 @@ app.get('/core/product/task/index', (req, res) => {
   const allowedSourceTypes = ['manual', 'import']
 
   if (status && !allowedStatuses.includes(status)) {
-    res.json(failure(422, '任务状态筛选值无效'))
+    res.json(failure(422, '项目状态筛选值无效'))
     return
   }
 
   if (sourceType && !allowedSourceTypes.includes(sourceType)) {
-    res.json(failure(422, '任务来源筛选值无效'))
+    res.json(failure(422, '项目来源筛选值无效'))
     return
   }
 
@@ -4609,14 +4514,14 @@ app.get('/core/product/task/read', (req, res) => {
   const id = Number(req.query.id)
 
   if (!Number.isInteger(id) || id <= 0) {
-    res.json(failure(422, '请提供有效的任务 ID'))
+    res.json(failure(422, '请提供有效的项目 ID'))
     return
   }
 
   const task = tasks.find((item) => item.id === id)
 
   if (!task) {
-    res.json(failure(404, '未找到对应任务'))
+    res.json(failure(404, '未找到对应项目'))
     return
   }
 
@@ -4650,7 +4555,7 @@ app.post('/core/product/task/save', (req, res) => {
   const targetPoints = Number(req.body?.target_points)
 
   if (!Number.isInteger(doctorId) || doctorId <= 0) {
-    res.json(failure(422, '请选择要分配任务的医生'))
+    res.json(failure(422, '请选择要分配项目的医生'))
     return
   }
 
@@ -4662,7 +4567,7 @@ app.post('/core/product/task/save', (req, res) => {
 
   const identifierId = Number(req.body?.identifier_id)
   if (!Number.isInteger(identifierId) || identifierId <= 0) {
-    res.json(failure(422, '请选择任务所属的项目标识'))
+    res.json(failure(422, '请选择项目标识'))
     return
   }
 
@@ -4694,7 +4599,7 @@ app.post('/core/product/task/save', (req, res) => {
   }
 
   if (doctor.account_status === 'disabled') {
-    res.json(failure(422, '该医生账号已禁用，无法创建新任务'))
+    res.json(failure(422, '该医生账号已禁用，无法创建新项目'))
     return
   }
 
@@ -4718,7 +4623,7 @@ app.post('/core/product/task/save', (req, res) => {
   const task = createTask(doctor, plan, 'manual', null, null, orgChain)
   tasks.push(task)
   updateWorkbench(task.item_count, 0)
-  res.json(success(hydrateTask(task), '任务已创建'))
+  res.json(success(hydrateTask(task), '项目已创建'))
 })
 
 app.post('/core/product/task/importPreview', async (req, res) => {
@@ -4878,7 +4783,7 @@ app.post('/core/product/task/importConfirm', (req, res) => {
         total_reward_cent: currentAnalysis.summary.total_reward_cent,
         level_summary: currentAnalysis.summary.level_summary
       },
-      '名单导入成功，账号和任务已自动创建'
+      '名单导入成功，账号和项目已自动创建'
     )
   )
 })
@@ -4893,7 +4798,7 @@ app.get('/core/product/task/template', async (req, res) => {
       '项目标识',
       '医生姓名',
       '手机号',
-      '任务积分',
+      '项目积分',
       '创建日期'
     ])
     worksheet.addRow([

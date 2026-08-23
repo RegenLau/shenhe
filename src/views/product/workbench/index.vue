@@ -3,7 +3,7 @@
     <header class="page-header">
       <div>
         <h1>工作台</h1>
-        <p>查看试点审核任务、医生账号与积分结算进度</p>
+        <p>查看试点审核项目、医生账号与积分结算进度</p>
       </div>
       <div class="page-actions">
         <span v-if="overview.updated_at" class="updated-at">
@@ -25,7 +25,7 @@
 
     <a-empty
       v-else-if="!loading && !hasBusinessData"
-      description="暂无业务数据，任务创建后将在这里展示进度"
+      description="暂无业务数据，项目创建后将在这里展示进度"
       class="empty-state"
     />
 
@@ -71,7 +71,7 @@
         </a-col>
 
         <a-col :xs="24" :xl="15">
-          <a-card :bordered="false" class="section-card" title="任务进度">
+          <a-card :bordered="false" class="section-card" title="项目进度">
             <template #extra>
               <span class="scope-label">{{ overview.scope || '累计' }}</span>
             </template>
@@ -181,7 +181,7 @@
         </a-col>
 
         <a-col :xs="24" :xl="15">
-          <a-card :bordered="false" class="section-card" title="最近任务单">
+          <a-card :bordered="false" class="section-card" title="最近项目">
             <template #extra>
               <a-link @click="goTo('/product/task')">查看全部</a-link>
             </template>
@@ -196,7 +196,7 @@
             <a-spin v-else :loading="recentTasksLoading" class="recent-loading">
               <a-empty
                 v-if="!recentTasksLoading && !recentTasks.length"
-                description="暂无任务单，创建或导入名单后将在这里显示"
+                description="暂无项目，创建或导入名单后将在这里显示"
               />
               <a-table
                 v-else
@@ -258,7 +258,7 @@
               </li>
             </ul>
             <p class="settlement-note">
-              1 积分 = 1 元；任务批次名单导出后由基金会人工结算，结果通过同批次名单导入回写。
+              1 积分 = 1 元；项目名单导出后由基金会人工结算，结果通过同项目名单导入回写。
             </p>
           </a-card>
         </a-col>
@@ -313,7 +313,7 @@ const overview = reactive({
 })
 
 const recentTaskColumns = [
-  { title: '任务', dataIndex: 'display_title', slotName: 'display_title', width: 260 },
+  { title: '项目', dataIndex: 'display_title', slotName: 'display_title', width: 260 },
   { title: '进度', dataIndex: 'progress', slotName: 'progress', width: 110 },
   { title: '状态', dataIndex: 'status', slotName: 'status', width: 90, align: 'center' },
   { title: '创建时间', dataIndex: 'create_time', width: 160 }
@@ -358,7 +358,7 @@ const metrics = computed(() => [
   },
   {
     key: 'tasks',
-    title: '审核任务',
+    title: '审核项目',
     value: overview.tasks.total,
     suffix: '条',
     icon: 'icon-file',
@@ -446,9 +446,9 @@ const loadRecentTasks = async () => {
       recentTasks.value = response.data.data || []
       return
     }
-    recentTasksError.value = response.message || '最近任务加载失败，请重新加载'
+    recentTasksError.value = response.message || '最近项目加载失败，请重新加载'
   } catch {
-    recentTasksError.value = '最近任务加载失败，请检查网络后重试'
+    recentTasksError.value = '最近项目加载失败，请检查网络后重试'
   } finally {
     recentTasksLoading.value = false
   }

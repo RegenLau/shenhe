@@ -1,0 +1,12 @@
+interface:
+  display_name: "AI to Figma"
+  short_description: "Approve visual previews, then build editable Figma screens"
+  default_prompt: "Use $ai-to-figma to approve a visual direction, rebuild it as capture-safe HTML, and send editable layers into Figma."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "figma"
+      description: "Figma MCP server for reference inspection, file creation, code-to-canvas capture, and verification"
+      transport: "streamable_http"
+      url: "https://mcp.figma.com/mcp"

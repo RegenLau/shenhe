@@ -2,13 +2,13 @@
   <div class="task-page">
     <header class="page-header">
       <div>
-        <h1>任务管理</h1>
-        <p>按导入批次查看任务汇总，进入批次后查看每位医生的审核进度</p>
+        <h1>项目管理</h1>
+        <p>按导入项目查看项目汇总，进入项目后查看每位医生的审核进度</p>
       </div>
     </header>
 
     <a-alert type="info" show-icon class="assignment-tip">
-      任务管理首页默认展示名单导入批次。点击“批次详情”查看该批次所有医生的进度，并可下载进度数据；如需查看手工创建任务，可在“创建方式”中切换。
+      项目管理首页默认展示名单导入的项目。点击“项目详情”查看该项目所有医生的进度，并可下载进度数据；如需查看手工创建的项目，可在“创建方式”中切换。
     </a-alert>
 
     <a-alert v-if="tableError" type="error" show-icon class="table-error">
@@ -29,10 +29,10 @@
     >
       <template #tableSearch>
         <a-col :xs="24" :sm="12">
-          <a-form-item field="keyword" label="批次或项目">
+          <a-form-item field="keyword" label="关键词">
             <a-input
               v-model="searchForm.keyword"
-              placeholder="批次编号、基金会、项目或项目标识"
+              placeholder="项目编号、基金会、所属项目或项目标识"
               allow-clear
             />
           </a-form-item>
@@ -52,7 +52,7 @@
       <template #tableAfterButtons>
         <a-button type="primary" @click="createRef?.open()">
           <template #icon><icon-plus /></template>
-          创建任务
+          创建项目
         </a-button>
         <a-button @click="importRef?.open()">
           <template #icon><icon-upload /></template>
@@ -157,9 +157,9 @@ const loadList = async (params) => {
       tableError.value = ''
       return response
     }
-    tableError.value = response.message || '任务批次加载失败，请重新加载'
+    tableError.value = response.message || '项目加载失败，请重新加载'
   } catch {
-    tableError.value = '任务批次加载失败，请检查网络后重试'
+    tableError.value = '项目加载失败，请检查网络后重试'
   }
 
   return {
@@ -188,7 +188,7 @@ const downloadProgress = async (record) => {
       return
     }
     tool.download(response)
-    Message.success('批次进度数据已开始下载')
+    Message.success('项目进度数据已开始下载')
   } catch {
     Message.error('进度数据下载失败，请检查网络后重试')
   } finally {
@@ -203,29 +203,29 @@ const options = reactive({
   operationColumnWidth: 190,
   view: {
     show: true,
-    text: '批次详情',
+    text: '项目详情',
     func: openBatch
   }
 })
 
 const columns = reactive([
-  { title: '批次编号', dataIndex: 'batch_no', width: 190, fixed: 'left' },
+  { title: '项目编号', dataIndex: 'batch_no', width: 190, fixed: 'left' },
   { title: '项目归属', dataIndex: 'identifier_name', width: 220 },
   { title: '医生数', dataIndex: 'doctor_count', width: 90, align: 'right' },
-  { title: '任务数', dataIndex: 'task_count', width: 90, align: 'right' },
+  { title: '项目数', dataIndex: 'task_count', width: 90, align: 'right' },
   { title: '完成进度', dataIndex: 'progress', width: 180 },
   {
-    title: '批次状态',
+    title: '项目状态',
     dataIndex: 'status',
     type: 'dict',
     dict: 'task_status',
     width: 100,
     align: 'center'
   },
-  { title: '任务题数', dataIndex: 'item_count', width: 100, align: 'right' },
-  { title: '任务积分', dataIndex: 'total_reward_cent', width: 110, align: 'right' },
+  { title: '项目题数', dataIndex: 'item_count', width: 100, align: 'right' },
+  { title: '项目积分', dataIndex: 'total_reward_cent', width: 110, align: 'right' },
   {
-    title: '批次来源',
+    title: '项目来源',
     dataIndex: 'source_type',
     type: 'dict',
     dict: 'task_source',

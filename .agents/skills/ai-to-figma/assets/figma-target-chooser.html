@@ -1,0 +1,101 @@
+<div id="ai-to-figma-target-gate">
+  <section class="card">
+    <p class="text-small">%%ACCOUNT_LABEL%%</p>
+    <strong>%%ACCOUNT_NAME%%</strong>
+    %%ACCOUNT_EMAIL%%
+  </section>
+
+  %%MODE_SECTION%%
+  %%EXISTING_SECTION%%
+  %%NEW_SECTION%%
+
+  <p class="text-destructive text-small" id="target-gate-error" role="alert" hidden></p>
+  <button class="btn btn-primary btn-block" id="target-gate-submit" type="button" disabled>%%SUBMIT_LABEL%%</button>
+  <button class="btn btn-ghost btn-block" id="target-gate-account" type="button">%%WRONG_ACCOUNT_LABEL%%</button>
+</div>
+
+<style>
+  #ai-to-figma-target-gate { display: grid; gap: 12px; }
+  #ai-to-figma-target-gate [hidden] { display: none !important; }
+  #ai-to-figma-target-gate h3,
+  #ai-to-figma-target-gate p { margin: 0; }
+</style>
+
+<script>
+(() => {
+  const config = %%CONFIG_JSON%%;
+  const root = document.getElementById('ai-to-figma-target-gate');
+  const existingSection = root.querySelector('#target-gate-existing');
+  const newSection = root.querySelector('#target-gate-new');
+  const targetInput = root.querySelector('#target-gate-url');
+  const error = root.querySelector('#target-gate-error');
+  const submit = root.querySelector('#target-gate-submit');
+  const wrongAccount = root.querySelector('#target-gate-account');
+  const value = (name) => root.querySelector(`input[name="${name}"]:checked`)?.value || '';
+  const mode = () => config.knownMode || value('destination_mode');
+
+  function designUrl(raw) {
+    try {
+      const url = new URL(raw.trim());
+      const host = url.hostname.toLowerCase();
+      const parts = url.pathname.split('/').filter(Boolean);
+      if (url.protocol !== 'https:' || !['figma.com', 'www.figma.com'].includes(host)) return '';
+      if (parts[0] !== 'design' || !parts[1]) return '';
+      return url.href;
+    } catch {
+      return '';
+    }
+  }
+
+  function sync() {
+    const currentMode = mode();
+    if (existingSection) existingSection.hidden = currentMode !== 'existing';
+    if (newSection) newSection.hidden = currentMode !== 'new';
+
+    let issue = '';
+    let valid = false;
+    if (currentMode === 'existing') {
+      const raw = targetInput?.value.trim() || '';
+      valid = Boolean(designUrl(raw));
+      if (raw && !valid) issue = config.labels.invalidUrl;
+    } else if (currentMode === 'new') {
+      valid = Boolean(value('plan_key'));
+      if (!config.hasPlans) issue = config.labels.noPlans;
+    }
+
+    error.textContent = issue;
+    error.hidden = !issue;
+    submit.disabled = !valid;
+  }
+
+  root.addEventListener('change', sync);
+  targetInput?.addEventListener('input', sync);
+
+  submit.addEventListener('click', async () => {
+    if (submit.disabled) return;
+    const currentMode = mode();
+    const parts = ['$ai-to-figma', `destination_mode=${currentMode}`];
+    if (currentMode === 'existing') {
+      parts.push(`target_url=${JSON.stringify(designUrl(targetInput.value))}`);
+    } else {
+      const selected = config.plans.find((plan) => plan.key === value('plan_key'));
+      if (!selected) return;
+      parts.push(`account_email=${JSON.stringify(config.account.email || '')}`);
+      parts.push(`plan_key=${JSON.stringify(selected.key)}`);
+      parts.push(`plan_name=${JSON.stringify(selected.name)}`);
+    }
+    submit.disabled = true;
+    wrongAccount.disabled = true;
+    await window.openai.sendFollowUpMessage({ prompt: parts.join(' '), title: config.labels.confirmTitle });
+  });
+
+  wrongAccount.addEventListener('click', async () => {
+    submit.disabled = true;
+    wrongAccount.disabled = true;
+    const prompt = ['$ai-to-figma', 'account_action=switch_required', `account_email=${JSON.stringify(config.account.email || '')}`].join(' ');
+    await window.openai.sendFollowUpMessage({ prompt, title: config.labels.switchTitle });
+  });
+
+  sync();
+})();
+</script>

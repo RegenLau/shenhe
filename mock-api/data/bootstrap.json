@@ -53,7 +53,7 @@
         "path": "/product/task",
         "component": "product/task/index",
         "meta": {
-          "title": "任务管理",
+          "title": "项目管理",
           "icon": "icon-list",
           "type": "M"
         }
@@ -250,7 +250,7 @@
         "color": "purple"
       },
       {
-        "label": "手动分配任务",
+        "label": "手动分配项目",
         "value": "manual",
         "color": "blue"
       },
