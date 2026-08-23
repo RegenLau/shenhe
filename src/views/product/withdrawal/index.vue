@@ -2,13 +2,17 @@
   <div class="settlement-page">
     <header class="page-header">
       <div>
-        <h1>结算管理</h1>
-        <p>按项目查看结算进度，进入项目后处理每位医生的审核结算</p>
+        <h1>月结管理</h1>
+        <p>统一查看月结账期、任务执行结果和独立人工结算记录</p>
       </div>
+      <a-button type="primary" status="warning" @click="manualSettlementRef?.open()">
+        <template #icon><icon-plus /></template>
+        人工单独结算
+      </a-button>
     </header>
 
     <a-alert type="info" show-icon>
-      结算与项目管理使用同一项目编号。点击“项目详情”查看该项目下的医生审核情况、结算积分及收款信息。
+      月结账期与对应任务执行结果合并为一行；人工结算单作为独立记录在同表展示，但不计入任何月结账期的医生数、单据数或金额。
     </a-alert>
 
     <a-alert v-if="summaryError" type="error" show-icon>
@@ -19,26 +23,31 @@
     </a-alert>
 
     <a-spin :loading="summaryLoading" class="summary-loading">
-      <section class="summary-grid" aria-label="项目结算统计">
+      <section class="summary-grid" aria-label="月结统计">
         <article class="metric-card">
-          <span>项目</span>
-          <strong>{{ summaryLoaded ? formatNumber(summary.total_batch_count) : '—' }}</strong>
-          <small>当前有结算记录的项目</small>
+          <span>本月已入账</span>
+          <strong>{{ summaryLoaded ? formatPoints(summary.current_month_accrued_amount_cent) : '—' }}</strong>
+          <small>逐条审核完成即累计</small>
         </article>
         <article class="metric-card">
-          <span>待导出项目</span>
-          <strong>{{ summaryLoaded ? formatNumber(summary.pending_batch_count) : '—' }}</strong>
-          <small>等待导出并交付基金会</small>
+          <span>月结待导出</span>
+          <strong>{{ summaryLoaded ? formatPoints(summary.pending_export_amount_cent) : '—' }}</strong>
+          <small>{{ formatNumber(summary.pending_export_count) }} 张医生结算单</small>
         </article>
         <article class="metric-card">
-          <span>结算中项目</span>
-          <strong>{{ summaryLoaded ? formatNumber(summary.processing_batch_count) : '—' }}</strong>
-          <small>已导出或部分完成</small>
+          <span>月结延期</span>
+          <strong>{{ summaryLoaded ? formatPoints(summary.deferred_amount_cent) : '—' }}</strong>
+          <small>{{ formatNumber(summary.deferred_doctor_count) }} 位医生条件未完成</small>
         </article>
         <article class="metric-card">
-          <span>结算总积分</span>
-          <strong>{{ summaryLoaded ? formatPoints(summary.total_amount_cent) : '—' }}</strong>
-          <small>全部项目累计</small>
+          <span>月结待到账</span>
+          <strong>{{ summaryLoaded ? formatPoints(summary.processing_amount_cent) : '—' }}</strong>
+          <small>{{ formatNumber(summary.processing_count) }} 张结算单</small>
+        </article>
+        <article class="metric-card">
+          <span>月结已到账</span>
+          <strong>{{ summaryLoaded ? formatPoints(summary.paid_amount_cent) : '—' }}</strong>
+          <small>{{ formatNumber(summary.paid_count) }} 张结算单</small>
         </article>
       </section>
     </a-spin>
@@ -56,64 +65,184 @@
       :options="options"
       :columns="columns"
       :search-form="searchForm"
-      class="batch-table"
+      class="cycle-table"
       @reset-search="resetSearchForm"
     >
       <template #tableSearch>
-        <a-col :xs="24" :sm="12">
+        <a-col :xs="24" :sm="8">
           <a-form-item field="keyword" label="关键词">
             <a-input
               v-model="searchForm.keyword"
-              placeholder="项目编号、基金会、所属项目、项目标识或医生"
+              placeholder="账期、结算单号或医生"
               allow-clear
             />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="12">
-          <a-form-item field="status" label="项目状态">
-            <sa-select
-              v-model="searchForm.status"
-              dict="settlement_batch_status"
-              placeholder="全部状态"
+        <a-col :xs="24" :sm="8">
+          <a-form-item field="month" label="账期">
+            <a-input
+              v-model="searchForm.month"
+              placeholder="YYYY-MM"
               allow-clear
+              :max-length="7"
             />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :sm="8">
+          <a-form-item field="record_type" label="记录类型">
+            <a-select
+              v-model="searchForm.record_type"
+              placeholder="全部记录"
+              allow-clear
+            >
+              <a-option value="monthly_cycle">月结账期</a-option>
+              <a-option value="manual_settlement">人工结算</a-option>
+            </a-select>
           </a-form-item>
         </a-col>
       </template>
 
-      <template #batch_no="{ record }">
-        <div class="batch-cell">
-          <strong>{{ record.batch_no || '—' }}</strong>
-          <span :title="record.display_title">{{ record.display_title || '—' }}</span>
+      <template #settlement_month="{ record }">
+        <div class="cycle-cell">
+          <strong>{{ record.display_title || '—' }}</strong>
+          <span>{{ record.record_no || '—' }}</span>
         </div>
       </template>
 
-      <template #identifier_name="{ record }">
-        <div class="org-cell">
-          <span class="org-primary">{{ record.identifier_name || '—' }}</span>
-          <span class="org-path">{{ record.foundation_name || '—' }}</span>
-        </div>
+      <template #record_type="{ record }">
+        <a-tag :color="record.record_type === 'manual_settlement' ? 'purple' : 'blue'">
+          {{ record.record_type === 'manual_settlement' ? '人工结算' : '月结账期' }}
+        </a-tag>
+      </template>
+
+      <template #status="{ record }">
+        <sa-dict :value="record.status" :dict="record.status_dict" />
       </template>
 
       <template #doctor_count="{ record }">
-        {{ formatNumber(record.doctor_count) }} 位
+        <div v-if="record.record_type === 'manual_settlement'" class="record-doctor">
+          <strong>{{ record.doctor_name || '—' }}</strong>
+          <span>{{ formatNumber(record.review_count) }} 条明细</span>
+        </div>
+        <div v-else class="record-doctor">
+          <strong>{{ formatNumber(record.doctor_count) }} 位医生</strong>
+          <span>{{ formatNumber(record.order_count) }} 张结算单</span>
+        </div>
       </template>
 
-      <template #pending_doctor_count="{ record }">
-        {{ formatNumber(record.pending_doctor_count) }} 位
+      <template #execution_result="{ record }">
+        <div class="execution-cell">
+          <strong>{{ record.result_message || '—' }}</strong>
+          <span v-if="record.record_type === 'manual_settlement'">
+            {{ record.manual_reason || '未填写原因' }}
+          </span>
+          <span v-else-if="record.job_no">
+            {{ record.job_no }}
+            <template v-if="record.execution_count > 1">
+              · 累计执行 {{ formatNumber(record.execution_count) }} 次
+            </template>
+          </span>
+          <span v-else>无任务编号</span>
+        </div>
       </template>
 
-      <template #pending_amount_cent="{ record }">
-        <strong class="points-text">{{ formatPoints(record.pending_amount_cent) }}</strong>
+      <template #pending_export_amount_cent="{ record }">
+        <strong>{{ formatPoints(record.pending_export_amount_cent) }}</strong>
+        <small>{{ formatNumber(record.pending_export_count) }} 张</small>
+      </template>
+
+      <template #deferred_amount_cent="{ record }">
+        <strong class="warning-text">{{ formatPoints(record.deferred_amount_cent) }}</strong>
+        <small>{{ formatNumber(record.deferred_doctor_count) }} 位</small>
+      </template>
+
+      <template #processing_amount_cent="{ record }">
+        <strong>{{ formatPoints(record.processing_amount_cent) }}</strong>
+        <small>
+          {{ formatNumber(record.exported_count + record.payment_failed_count) }} 张
+        </small>
+      </template>
+
+      <template #paid_amount_cent="{ record }">
+        <strong>{{ formatPoints(record.paid_amount_cent) }}</strong>
+        <small>{{ formatNumber(record.paid_count) }} 张</small>
+      </template>
+
+      <template #operationCell="{ record }">
+        <a-space wrap>
+          <template v-if="record.record_type === 'monthly_cycle'">
+            <a-link v-if="record.cycle_id" @click="openCycle(record)">账期详情</a-link>
+            <span v-else class="disabled-action">无账期详情</span>
+          </template>
+          <template v-else>
+            <a-link @click="orderDetailRef?.open(record.record_id)">详情</a-link>
+            <a-link
+              v-if="['pending_export', 'payment_failed'].includes(record.status)"
+              :disabled="manualExportingId === record.record_id"
+              @click="confirmManualExport(record)"
+            >
+              {{ manualExportingId === record.record_id ? '导出中…' : '导出' }}
+            </a-link>
+            <a-link
+              v-if="['exported', 'payment_failed'].includes(record.status)"
+              @click="markPaidRef?.open(manualRecordForAction(record))"
+            >
+              补录到账
+            </a-link>
+          </template>
+        </a-space>
       </template>
     </sa-table>
+
+    <a-alert
+      v-if="manualDownloadRetry.visible"
+      type="warning"
+      show-icon
+      closable
+      @close="manualDownloadRetry.visible = false"
+    >
+      人工结算文件已生成，但有文件未下载成功，可直接重试。
+      <template #action>
+        <a-space>
+          <a-button
+            v-if="manualDownloadRetry.statementUrl"
+            size="small"
+            @click="retryManualDownload('statement')"
+          >
+            重下结算单
+          </a-button>
+          <a-button
+            v-if="manualDownloadRetry.detailUrl"
+            size="small"
+            @click="retryManualDownload('detail')"
+          >
+            重下结算明细
+          </a-button>
+        </a-space>
+      </template>
+    </a-alert>
+
+    <manual-settlement
+      ref="manualSettlementRef"
+      @success="refreshSettlement"
+      @edit-account="openManualPaymentAccount"
+    />
+    <payment-account ref="paymentAccountRef" @success="refreshSettlement" />
+    <order-detail ref="orderDetailRef" />
+    <mark-paid ref="markPaidRef" @success="refreshSettlement" />
   </div>
 </template>
 
 <script setup>
 import { onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import { Message, Modal } from '@arco-design/web-vue'
+import tool from '@/utils/tool'
 import withdrawalApi from '@/api/product/withdrawal'
+import ManualSettlement from './manual-settlement.vue'
+import PaymentAccount from './payment-account.vue'
+import OrderDetail from './view.vue'
+import MarkPaid from './mark-paid.vue'
 
 const router = useRouter()
 const crudRef = ref()
@@ -121,14 +250,29 @@ const tableError = ref('')
 const summaryError = ref('')
 const summaryLoading = ref(false)
 const summaryLoaded = ref(false)
+const manualExportingId = ref()
+const manualSettlementRef = ref()
+const paymentAccountRef = ref()
+const orderDetailRef = ref()
+const markPaidRef = ref()
+const manualDownloadRetry = reactive({
+  visible: false,
+  statementUrl: '',
+  detailUrl: ''
+})
 
-const searchForm = ref({ keyword: '', status: '' })
+const searchForm = ref({ keyword: '', month: '', record_type: '' })
 const summary = reactive({
-  total_batch_count: 0,
-  pending_batch_count: 0,
-  processing_batch_count: 0,
-  settled_batch_count: 0,
-  total_amount_cent: 0
+  total_cycle_count: 0,
+  current_month_accrued_amount_cent: 0,
+  pending_export_count: 0,
+  pending_export_amount_cent: 0,
+  deferred_doctor_count: 0,
+  deferred_amount_cent: 0,
+  processing_count: 0,
+  processing_amount_cent: 0,
+  paid_count: 0,
+  paid_amount_cent: 0
 })
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
@@ -138,17 +282,17 @@ const loadSummary = async () => {
   summaryLoading.value = true
   summaryError.value = ''
   try {
-    const response = await withdrawalApi.getSummary()
+    const response = await withdrawalApi.getMonthlySummary()
     if (response.code === 200) {
       Object.assign(summary, response.data)
       summaryLoaded.value = true
       return
     }
     summaryLoaded.value = false
-    summaryError.value = response.message || '结算统计加载失败，请重新加载'
+    summaryError.value = response.message || '月结统计加载失败，请重新加载'
   } catch {
     summaryLoaded.value = false
-    summaryError.value = '结算统计加载失败，请检查网络后重试'
+    summaryError.value = '月结统计加载失败，请检查网络后重试'
   } finally {
     summaryLoading.value = false
   }
@@ -156,14 +300,14 @@ const loadSummary = async () => {
 
 const loadList = async (params) => {
   try {
-    const response = await withdrawalApi.getBatchList(params)
+    const response = await withdrawalApi.getSettlementHistory(params)
     if (response.code === 200) {
       tableError.value = ''
       return response
     }
-    tableError.value = response.message || '结算项目加载失败，请重新加载'
+    tableError.value = response.message || '月结账期加载失败，请重新加载'
   } catch {
-    tableError.value = '结算项目加载失败，请检查网络后重试'
+    tableError.value = '月结账期加载失败，请检查网络后重试'
   }
 
   return {
@@ -173,10 +317,11 @@ const loadList = async (params) => {
   }
 }
 
-const openBatch = (record) => {
+const openCycle = (record) => {
+  if (!record.cycle_id) return
   router.push({
     name: 'productSettlementBatchDetail',
-    params: { batchNo: record.batch_no }
+    params: { batchNo: record.cycle_id }
   })
 }
 
@@ -184,35 +329,111 @@ const options = reactive({
   api: loadList,
   pageLayout: 'normal',
   showSort: false,
-  operationColumnWidth: 110,
-  view: { show: true, text: '项目详情', func: openBatch }
+  operationColumnWidth: 230,
+  view: { show: false }
 })
 
 const columns = reactive([
-  { title: '项目编号', dataIndex: 'batch_no', width: 210, fixed: 'left' },
-  { title: '项目归属', dataIndex: 'identifier_name', width: 220 },
+  { title: '账期 / 结算记录', dataIndex: 'settlement_month', width: 215, fixed: 'left' },
+  { title: '记录类型', dataIndex: 'record_type', width: 105, align: 'center' },
+  { title: '状态', dataIndex: 'status', width: 110, align: 'center' },
+  { title: '医生 / 单据', dataIndex: 'doctor_count', width: 170 },
+  { title: '执行结果', dataIndex: 'execution_result', width: 310 },
   {
-    title: '项目状态',
-    dataIndex: 'status',
-    type: 'dict',
-    dict: 'settlement_batch_status',
-    width: 110,
-    align: 'center'
-  },
-  { title: '医生数', dataIndex: 'doctor_count', width: 90, align: 'right' },
-  {
-    title: '待结算医生数',
-    dataIndex: 'pending_doctor_count',
-    width: 130,
+    title: '待导出',
+    dataIndex: 'pending_export_amount_cent',
+    width: 150,
     align: 'right'
   },
-  { title: '待结算积分', dataIndex: 'pending_amount_cent', width: 130, align: 'right' },
-  { title: '项目创建时间', dataIndex: 'created_at', width: 165 }
+  {
+    title: '延期结算',
+    dataIndex: 'deferred_amount_cent',
+    width: 150,
+    align: 'right'
+  },
+  {
+    title: '已导出待到账',
+    dataIndex: 'processing_amount_cent',
+    width: 160,
+    align: 'right'
+  },
+  { title: '已到账', dataIndex: 'paid_amount_cent', width: 150, align: 'right' },
+  { title: '执行 / 生成时间', dataIndex: 'executed_at', width: 175 }
 ])
 
+const manualRecordForAction = (record) => ({
+  id: record.record_id,
+  settlement_no: record.record_no,
+  doctor_name: record.doctor_name,
+  amount_cent: record.total_amount_cent,
+  status: record.status
+})
+const downloadManualFile = async (url, type) => {
+  const response = await withdrawalApi.downloadMonthlyExport(url)
+  if (response?.status !== 200) throw new Error(`${type}_download_failed`)
+  tool.download(response)
+}
+const exportManualRecord = async (record) => {
+  manualExportingId.value = record.record_id
+  manualDownloadRetry.visible = false
+  try {
+    const response = await withdrawalApi.createManualExport(record.record_id)
+    if (response.code !== 200) return
+    manualDownloadRetry.statementUrl = response.data.statement_url
+    manualDownloadRetry.detailUrl = response.data.detail_url
+    const results = await Promise.allSettled([
+      downloadManualFile(response.data.statement_url, 'statement'),
+      downloadManualFile(response.data.detail_url, 'detail')
+    ])
+    if (results[0].status === 'fulfilled') manualDownloadRetry.statementUrl = ''
+    if (results[1].status === 'fulfilled') manualDownloadRetry.detailUrl = ''
+    manualDownloadRetry.visible = Boolean(
+      manualDownloadRetry.statementUrl || manualDownloadRetry.detailUrl
+    )
+    if (manualDownloadRetry.visible) {
+      Message.warning('文件已生成，部分下载失败，请直接重试')
+    } else {
+      Message.success('人工结算单和对应医生结算明细已下载')
+    }
+    refreshSettlement()
+  } catch {
+    Message.error('人工结算文件导出失败，请检查网络后重试')
+  } finally {
+    manualExportingId.value = undefined
+  }
+}
+const confirmManualExport = (record) => {
+  Modal.confirm({
+    title: `确认导出 ${record.doctor_name || ''} 的人工结算文件`,
+    content:
+      '系统将分别生成人工结算单和对应医生结算明细。文件包含身份证号、银行卡号及审核问答等敏感信息，请妥善保管。',
+    width: 'min(440px, calc(100vw - 32px))',
+    okText: '确认导出',
+    onOk: () => exportManualRecord(record)
+  })
+}
+const retryManualDownload = async (type) => {
+  const key = type === 'statement' ? 'statementUrl' : 'detailUrl'
+  if (!manualDownloadRetry[key]) return
+  try {
+    await downloadManualFile(manualDownloadRetry[key], type)
+    manualDownloadRetry[key] = ''
+    manualDownloadRetry.visible = Boolean(
+      manualDownloadRetry.statementUrl || manualDownloadRetry.detailUrl
+    )
+    Message.success(type === 'statement' ? '人工结算单已下载' : '人工结算明细已下载')
+  } catch {
+    Message.error('文件下载失败，请稍后重试')
+  }
+}
 const refresh = () => crudRef.value?.refresh()
+const refreshSettlement = () => {
+  loadSummary()
+  refresh()
+}
+const openManualPaymentAccount = (doctor) => paymentAccountRef.value?.open(doctor)
 const resetSearchForm = () => {
-  Object.assign(searchForm.value, { keyword: '', status: '' })
+  Object.assign(searchForm.value, { keyword: '', month: '', record_type: '' })
 }
 
 onMounted(() => {
@@ -227,10 +448,14 @@ onMounted(() => {
   min-width: 0;
   max-width: 100%;
   flex-direction: column;
-  gap: 12px;
+  gap: 16px;
 }
 
 .page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
   padding: 20px 24px;
   background: var(--color-bg-2);
   border: 1px solid var(--color-border-1);
@@ -258,7 +483,7 @@ onMounted(() => {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -286,69 +511,71 @@ onMounted(() => {
   strong {
     overflow: hidden;
     color: var(--color-text-1);
-    font-size: 24px;
+    font-size: 22px;
     line-height: 32px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 }
 
-.batch-table { min-width: 0; }
+.cycle-table { min-width: 0; }
+.record-doctor,
+.execution-cell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 4px;
+  strong,
+  span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  strong {
+    color: var(--color-text-1);
+    line-height: 20px;
+  }
+  span {
+    color: var(--color-text-3);
+    font-size: 12px;
+    line-height: 18px;
+  }
+}
 
-.batch-cell {
+.cycle-cell {
   display: flex;
   min-width: 0;
   flex-direction: column;
   gap: 4px;
 
-  strong,
+  strong { color: var(--color-text-1); }
   span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  strong {
-    color: var(--color-text-1);
+    color: var(--color-text-3);
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
     font-size: 12px;
   }
+}
 
-  span {
+:deep(.arco-table-td) {
+  small {
+    display: block;
+    margin-top: 4px;
     color: var(--color-text-3);
     font-size: 12px;
   }
 }
 
-.org-cell {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  gap: 4px;
-
-  span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+.warning-text { color: rgb(var(--warning-6)); }
+.disabled-action {
+  color: var(--color-text-4);
+  font-size: 13px;
 }
 
-.org-primary {
-  color: var(--color-text-1);
-  font-weight: 500;
+@media (max-width: 1199px) {
+  .summary-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 
-.org-path {
-  color: var(--color-text-3);
-  font-size: 12px;
-}
-
-.points-text {
-  color: var(--color-text-1);
-  font-weight: 500;
-}
-
-@media (max-width: 1023px) {
+@media (max-width: 767px) {
+  .page-header { flex-direction: column; }
   .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 

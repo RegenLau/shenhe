@@ -3,12 +3,12 @@
     <header class="page-header">
       <div>
         <h1>医生管理</h1>
-        <p>查看医生账号、执业信息、认证状态与累计计酬</p>
+        <p>查看医生账号、执业信息、月结条件与逐条审核积分</p>
       </div>
     </header>
 
     <a-alert type="info" show-icon class="account-tip">
-      医生账号可在本页手动新增，或由名单导入按手机号自动创建。待激活医生使用绑定手机号登录小程序后，即可看到已分配项目；项目全部完成后，对应积分计入累计积分。
+      医生每完成一条最终审核，对应积分立即计入累计。月结时只有专业认证已通过且收款信息已填写的医生会生成结算单；零积分医生不产生结算记录。
     </a-alert>
 
     <a-alert v-if="tableError" type="error" show-icon class="table-error">
@@ -28,7 +28,7 @@
       @reset-search="resetSearchForm"
     >
       <template #tableSearch>
-        <a-col :xs="24" :sm="8">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item field="keyword" label="关键词">
             <a-input
               v-model="searchForm.keyword"
@@ -37,7 +37,7 @@
             />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="8">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item field="account_status" label="账号状态">
             <sa-select
               v-model="searchForm.account_status"
@@ -47,11 +47,21 @@
             />
           </a-form-item>
         </a-col>
-        <a-col :xs="24" :sm="8">
+        <a-col :xs="24" :sm="12" :lg="6">
           <a-form-item field="certification_status" label="认证状态">
             <sa-select
               v-model="searchForm.certification_status"
               dict="doctor_certification_status"
+              placeholder="全部状态"
+              allow-clear
+            />
+          </a-form-item>
+        </a-col>
+        <a-col :xs="24" :sm="12" :lg="6">
+          <a-form-item field="payment_account_status" label="收款信息">
+            <sa-select
+              v-model="searchForm.payment_account_status"
+              dict="payment_account_status"
               placeholder="全部状态"
               allow-clear
             />
@@ -96,6 +106,10 @@
         <span class="money-text">{{ formatPoints(record.accrued_reward_cent) }}</span>
       </template>
 
+      <template #unsettled_reward_cent="{ record }">
+        <span class="money-text">{{ formatPoints(record.unsettled_reward_cent) }}</span>
+      </template>
+
     </sa-table>
 
     <doctor-detail ref="detailRef" @updated="refresh" />
@@ -120,7 +134,8 @@ const exporting = ref(false)
 const searchForm = ref({
   keyword: '',
   account_status: '',
-  certification_status: ''
+  certification_status: '',
+  payment_account_status: ''
 })
 
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
@@ -221,8 +236,22 @@ const columns = reactive([
     align: 'center'
   },
   {
+    title: '收款信息',
+    dataIndex: 'payment_account_status',
+    type: 'dict',
+    dict: 'payment_account_status',
+    width: 110,
+    align: 'center'
+  },
+  {
     title: '累计积分',
     dataIndex: 'accrued_reward_cent',
+    width: 110,
+    align: 'right'
+  },
+  {
+    title: '待结积分',
+    dataIndex: 'unsettled_reward_cent',
     width: 110,
     align: 'right'
   }
@@ -233,7 +262,8 @@ const resetSearchForm = () => {
   Object.assign(searchForm.value, {
     keyword: '',
     account_status: '',
-    certification_status: ''
+    certification_status: '',
+    payment_account_status: ''
   })
 }
 

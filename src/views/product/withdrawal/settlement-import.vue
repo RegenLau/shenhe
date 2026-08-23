@@ -1,26 +1,25 @@
 <template>
   <a-drawer
     v-model:visible="visible"
-    width="min(820px, 100vw)"
-    title="导入已结算名单"
+    width="min(880px, 100vw)"
+    title="导入到账结果"
     :footer="false"
     :mask-closable="false"
     unmount-on-close
     @cancel="reset"
   >
     <a-steps :current="currentStep" size="small" class="import-steps">
-      <a-step>上传名单</a-step>
+      <a-step>上传结算单</a-step>
       <a-step>校验预览</a-step>
-      <a-step>更新完成</a-step>
+      <a-step>回写完成</a-step>
     </a-steps>
 
     <section v-if="currentStep === 1" class="step-content">
       <a-alert type="info" show-icon>
-        请使用当前项目导出的名单，将文件中的“结算状态”从“已导出”改为“已结算”后再上传。系统只会回写该项目中仍为“已导出”的记录。
+        请使用系统导出的“月度结算单” XLSX，填写“到账结果”、“到账时间”、“银行流水号”或“失败原因”后上传。系统会按结算单号和金额双重校验。
       </a-alert>
-
       <a-alert type="warning" show-icon>
-        名单包含身份证号、银行卡号等敏感信息，请仅上传基金会反馈的原文件，并妥善保管。
+        文件包含身份证号和银行卡号等敏感信息，请仅上传本账期的系统原导出文件。
       </a-alert>
 
       <a-upload
@@ -28,24 +27,24 @@
         draggable
         :auto-upload="false"
         :limit="1"
-        accept=".csv"
-        class="roster-upload"
+        accept=".xlsx"
+        class="result-upload"
       >
         <template #upload-button>
           <div class="upload-trigger">
             <icon-upload :size="36" />
-            <strong>点击或拖拽上传已结算名单</strong>
-            <span>支持 .csv，文件不超过 10 MB</span>
+            <strong>点击或拖拽上传到账结果</strong>
+            <span>仅支持 .xlsx，文件不超过 10 MB</span>
           </div>
         </template>
       </a-upload>
 
-      <div class="template-fields">
-        <h3>必需字段</h3>
-        <div class="field-list">
-          <span>结算单号</span>
-          <span>结算状态</span>
-        </div>
+      <div class="field-note">
+        <strong>到账结果填写规则</strong>
+        <ul>
+          <li>到账：填“已到账”，并填写到账时间和银行流水号。</li>
+          <li>失败：填“失败”，并填写失败原因。</li>
+        </ul>
       </div>
 
       <div class="step-actions">
@@ -57,22 +56,11 @@
 
     <section v-else-if="currentStep === 2" class="step-content">
       <div class="summary-grid">
-        <div>
-          <span>名单行数</span>
-          <strong>{{ formatNumber(preview.summary.total_rows) }}</strong>
-        </div>
-        <div>
-          <span>可更新</span>
-          <strong>{{ formatNumber(preview.summary.eligible_rows) }}</strong>
-        </div>
-        <div>
-          <span>待导出跳过</span>
-          <strong>{{ formatNumber(preview.summary.pending_rows) }}</strong>
-        </div>
-        <div>
-          <span>其他跳过</span>
-          <strong>{{ formatNumber(otherSkippedRows) }}</strong>
-        </div>
+        <div><span>文件行数</span><strong>{{ formatNumber(preview.summary.total_rows) }}</strong></div>
+        <div><span>可回写</span><strong>{{ formatNumber(preview.summary.eligible_rows) }}</strong></div>
+        <div><span>确认到账</span><strong>{{ formatNumber(preview.summary.paid_rows) }}</strong></div>
+        <div><span>记录失败</span><strong>{{ formatNumber(preview.summary.failed_rows) }}</strong></div>
+        <div><span>跳过/无效</span><strong>{{ formatNumber(preview.summary.skipped_rows) }}</strong></div>
       </div>
 
       <a-alert
@@ -81,7 +69,7 @@
         show-icon
         class="preview-alert"
       >
-        名单中没有可更新的已导出记录，请根据逐行提示检查后重新上传。
+        没有可回写记录，请根据逐行提示修改文件后重新上传。
       </a-alert>
       <a-alert
         v-else-if="preview.summary.skipped_rows > 0"
@@ -89,46 +77,42 @@
         show-icon
         class="preview-alert"
       >
-        可更新 {{ preview.summary.eligible_rows }} 笔，另有
-        {{ preview.summary.skipped_rows }} 笔会跳过且不改变原结算状态。
+        可回写 {{ preview.summary.eligible_rows }} 笔，另有 {{ preview.summary.skipped_rows }} 笔会跳过且不改变原状态。
       </a-alert>
       <a-alert v-else type="success" show-icon class="preview-alert">
-        全部 {{ preview.summary.eligible_rows }} 笔校验通过，确认后将更新为“已结算”。
+        全部 {{ preview.summary.eligible_rows }} 笔校验通过。
       </a-alert>
 
       <a-table
         :data="preview.rows"
         :pagination="false"
         :bordered="{ wrapper: true, cell: false }"
-        :scroll="{ x: 1100 }"
+        :scroll="{ x: 1240 }"
         row-key="row_no"
       >
         <template #columns>
           <a-table-column title="行号" data-index="row_no" :width="70" />
-          <a-table-column title="结算单号" data-index="withdrawal_no" :width="180">
-            <template #cell="{ record }">
-              <span class="number-text">{{ record.withdrawal_no || '—' }}</span>
-            </template>
+          <a-table-column title="结算单号" data-index="settlement_no" :width="190">
+            <template #cell="{ record }"><span class="number-text">{{ record.settlement_no || '—' }}</span></template>
           </a-table-column>
-          <a-table-column title="申请医生" data-index="payee_name" :width="120">
-            <template #cell="{ record }">
-              {{ record.payee_name || '—' }}
-            </template>
+          <a-table-column title="医生" data-index="doctor_name" :width="110" />
+          <a-table-column title="到账金额" data-index="amount_yuan" :width="120" align="right">
+            <template #cell="{ record }">{{ record.amount_yuan || '—' }} 元</template>
           </a-table-column>
-          <a-table-column title="文件结算状态" data-index="target_status" :width="120">
-            <template #cell="{ record }">
-              {{ record.target_status || '—' }}
-            </template>
-          </a-table-column>
-          <a-table-column title="系统结算状态" data-index="current_status" :width="120">
+          <a-table-column title="到账结果" data-index="payment_result" :width="110" />
+          <a-table-column title="系统状态" data-index="current_status" :width="110" align="center">
             <template #cell="{ record }">
               <sa-dict
                 v-if="record.current_status"
                 :value="record.current_status"
-                dict="withdrawal_settlement_status"
-                render="span"
+                dict="monthly_settlement_order_status"
               />
               <span v-else>—</span>
+            </template>
+          </a-table-column>
+          <a-table-column title="到账时间/失败原因" :width="270">
+            <template #cell="{ record }">
+              <span>{{ record.payment_result === '失败' ? record.failure_reason : record.paid_at || '—' }}</span>
             </template>
           </a-table-column>
           <a-table-column title="校验结果" data-index="validation_status" :width="300">
@@ -152,33 +136,22 @@
           :disabled="preview.summary.eligible_rows === 0"
           @click="confirmImport"
         >
-          确认更新 {{ preview.summary.eligible_rows }} 笔
+          确认回写 {{ preview.summary.eligible_rows }} 笔
         </a-button>
       </div>
     </section>
 
     <section v-else class="step-content">
-      <a-result status="success" title="结算状态更新完成">
+      <a-result status="success" title="到账结果回写完成">
         <template #subtitle>
-          已按结算单号更新当前项目的可结算记录，跳过记录保持原状态不变。
+          已按结算单号和金额更新本账期记录，跳过记录保持原状态。
         </template>
       </a-result>
-
       <div class="result-grid">
-        <div>
-          <span>更新为已结算</span>
-          <strong>{{ formatNumber(result.updated_count) }}</strong>
-        </div>
-        <div>
-          <span>跳过未更新</span>
-          <strong>{{ formatNumber(result.skipped_count) }}</strong>
-        </div>
+        <div><span>已确认到账</span><strong>{{ formatNumber(result.paid_count) }}</strong></div>
+        <div><span>已记录失败</span><strong>{{ formatNumber(result.failed_count) }}</strong></div>
+        <div><span>跳过未更新</span><strong>{{ formatNumber(result.skipped_count) }}</strong></div>
       </div>
-
-      <div class="settled-time">
-        结算状态更新时间：{{ result.settled_time || '—' }}
-      </div>
-
       <div class="step-actions">
         <a-button type="primary" @click="close">完成</a-button>
       </div>
@@ -187,310 +160,160 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { reactive, ref } from 'vue'
 import { Message } from '@arco-design/web-vue'
 import withdrawalApi from '@/api/product/withdrawal'
 
 const emit = defineEmits(['success'])
 const props = defineProps({
-  batchNo: {
-    type: String,
-    required: true
-  }
+  cycleId: { type: Number, required: true }
 })
-
 const visible = ref(false)
 const currentStep = ref(1)
 const fileList = ref([])
 const previewLoading = ref(false)
 const confirmLoading = ref(false)
-
-const emptySummary = {
-  total_rows: 0,
-  eligible_rows: 0,
-  skipped_rows: 0,
-  pending_rows: 0,
-  settled_rows: 0,
-  invalid_rows: 0
-}
-
-const preview = reactive({
-  preview_id: '',
-  file_name: '',
-  rows: [],
-  summary: { ...emptySummary }
-})
-
-const result = reactive({
-  updated_count: 0,
-  skipped_count: 0,
-  settled_time: ''
-})
-
-const otherSkippedRows = computed(() =>
-  Math.max(
-    Number(preview.summary.skipped_rows || 0) -
-      Number(preview.summary.pending_rows || 0),
-    0
-  )
-)
-
+const emptySummary = { total_rows: 0, eligible_rows: 0, paid_rows: 0, failed_rows: 0, skipped_rows: 0 }
+const preview = reactive({ preview_id: '', file_name: '', rows: [], summary: { ...emptySummary } })
+const result = reactive({ paid_count: 0, failed_count: 0, skipped_count: 0 })
 const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
-const validationColor = (status) => {
-  if (status === 'eligible') return 'green'
-  if (status === 'skipped') return 'orange'
-  return 'red'
-}
-const validationLabel = (status) => {
-  if (status === 'eligible') return '可更新'
-  if (status === 'skipped') return '已跳过'
-  return '无效'
-}
-
+const validationColor = (status) => status === 'eligible' ? 'green' : status === 'skipped' ? 'orange' : 'red'
+const validationLabel = (status) => status === 'eligible' ? '可回写' : status === 'skipped' ? '已跳过' : '无效'
+const readFileAsBase64 = (file) => new Promise((resolve, reject) => {
+  const reader = new FileReader()
+  reader.onload = () => {
+    const [, content = ''] = String(reader.result || '').split(',', 2)
+    resolve(content)
+  }
+  reader.onerror = () => reject(reader.error)
+  reader.readAsDataURL(file)
+})
 const reset = () => {
   currentStep.value = 1
   fileList.value = []
-  Object.assign(preview, {
-    preview_id: '',
-    file_name: '',
-    rows: [],
-    summary: { ...emptySummary }
-  })
-  Object.assign(result, {
-    updated_count: 0,
-    skipped_count: 0,
-    settled_time: ''
-  })
+  Object.assign(preview, { preview_id: '', file_name: '', rows: [], summary: { ...emptySummary } })
+  Object.assign(result, { paid_count: 0, failed_count: 0, skipped_count: 0 })
 }
-
-const open = () => {
-  reset()
-  visible.value = true
-}
-
-const close = () => {
-  visible.value = false
-}
+const open = () => { reset(); visible.value = true }
+const close = () => { visible.value = false }
+const backToUpload = () => { currentStep.value = 1; fileList.value = [] }
 
 const previewImport = async () => {
   const fileItem = fileList.value[0]
-  if (!fileItem) {
-    Message.warning('请先选择已结算名单')
-    return
-  }
-
-  const file = fileItem.file
+  const file = fileItem?.file
   if (!file) {
-    Message.error('无法读取名单文件，请重新选择')
+    Message.warning('请先选择 XLSX 到账结果文件')
     return
   }
-
+  if (file.size > 10 * 1024 * 1024) {
+    Message.error('到账结果文件不能超过 10 MB')
+    return
+  }
   previewLoading.value = true
   try {
-    const response = await withdrawalApi.previewSettlementImport({
-      batch_no: props.batchNo,
+    const response = await withdrawalApi.previewMonthlyResultImport({
+      cycle_id: props.cycleId,
       file_name: fileItem.name || file.name,
       file_size: file.size,
-      file_content: await file.text()
+      file_base64: await readFileAsBase64(file)
     })
-
     if (response.code === 200) {
       Object.assign(preview, response.data)
       currentStep.value = 2
     }
   } catch {
-    Message.error('已结算名单校验失败，请检查网络后重试')
+    Message.error('到账结果校验失败，请检查网络后重试')
   } finally {
     previewLoading.value = false
   }
 }
-
-const backToUpload = () => {
-  currentStep.value = 1
-  fileList.value = []
-}
-
 const confirmImport = async () => {
   confirmLoading.value = true
   try {
-    const response = await withdrawalApi.confirmSettlementImport(
-      preview.preview_id
-    )
+    const response = await withdrawalApi.confirmMonthlyResultImport(preview.preview_id)
     if (response.code === 200) {
       Object.assign(result, response.data)
       currentStep.value = 3
       emit('success')
     }
   } catch {
-    Message.error('结算状态更新失败，本次未完成更新，请重试')
+    Message.error('到账结果回写失败，请重新校验后再试')
   } finally {
     confirmLoading.value = false
   }
 }
-
 defineExpose({ open })
 </script>
 
 <style scoped lang="less">
-.import-steps {
-  margin-bottom: 24px;
-}
-
+.import-steps { margin-bottom: 24px; }
 .step-content {
   display: flex;
-  min-height: calc(100vh - 150px);
   flex-direction: column;
-  gap: 20px;
+  gap: 16px;
 }
-
-.roster-upload {
-  width: 100%;
-}
-
+.result-upload { width: 100%; }
 .upload-trigger {
   display: flex;
-  min-height: 190px;
+  min-height: 150px;
   align-items: center;
   justify-content: center;
   flex-direction: column;
-  gap: 10px;
-  color: var(--color-text-3);
-  background: var(--color-fill-1);
-  border: 1px dashed var(--color-border-3);
-  border-radius: var(--border-radius-medium);
-
-  strong {
-    color: var(--color-text-1);
-    font-size: 16px;
-    font-weight: 600;
-  }
-
+  gap: 8px;
+  color: var(--color-text-2);
   span {
+    color: var(--color-text-3);
     font-size: 12px;
   }
 }
-
-.template-fields {
-  h3 {
-    margin: 0 0 12px;
-    color: var(--color-text-1);
-    font-size: 15px;
-    font-weight: 600;
-  }
-}
-
-.field-list {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-
-  span {
-    padding: 12px 16px;
+.field-note {
+  padding: 14px 16px;
+  background: var(--color-fill-1);
+  border-radius: var(--border-radius-medium);
+  ul {
+    margin: 8px 0 0;
+    padding-left: 20px;
     color: var(--color-text-2);
-    background: var(--color-fill-1);
-    border-radius: var(--border-radius-small);
+    line-height: 24px;
   }
 }
-
 .summary-grid,
 .result-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
-
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
   > div {
     display: flex;
     min-width: 0;
     flex-direction: column;
     gap: 6px;
-    padding: 16px;
+    padding: 12px;
     background: var(--color-fill-1);
     border-radius: var(--border-radius-medium);
   }
-
-  span {
-    color: var(--color-text-3);
-    font-size: 12px;
-  }
-
-  strong {
-    color: var(--color-text-1);
-    font-size: 22px;
-    line-height: 30px;
-  }
+  span { color: var(--color-text-3); font-size: 12px; }
+  strong { color: var(--color-text-1); font-size: 20px; }
 }
-
-.result-grid {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-}
-
-.preview-alert {
-  flex: 0 0 auto;
-}
-
-.number-text {
-  color: var(--color-text-2);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
-  font-size: 12px;
-  overflow-wrap: anywhere;
-}
-
+.result-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.preview-alert { margin-top: 0; }
 .validation-cell {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-
-  span {
-    min-width: 0;
-    color: var(--color-text-2);
-    line-height: 20px;
-    overflow-wrap: anywhere;
-  }
+  span { line-height: 22px; }
 }
-
-.settled-time {
-  padding: 12px 16px;
-  color: var(--color-text-2);
-  background: var(--color-fill-1);
-  border-radius: var(--border-radius-small);
-  text-align: center;
+.number-text {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 12px;
 }
-
 .step-actions {
   display: flex;
-  align-items: center;
   justify-content: flex-end;
-  gap: 12px;
-  margin-top: auto;
-  padding-top: 4px;
+  padding-top: 8px;
 }
-
-.step-actions--between {
-  justify-content: space-between;
-}
-
-@media (max-width: 575px) {
-  .step-content {
-    min-height: calc(100vh - 130px);
-  }
-
-  .summary-grid,
-  .result-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .field-list {
-    grid-template-columns: 1fr;
-  }
-
-  .step-actions,
-  .step-actions--between {
-    align-items: stretch;
-    flex-direction: column-reverse;
-
-    :deep(.arco-btn) {
-      width: 100%;
-    }
-  }
+.step-actions--between { justify-content: space-between; }
+@media (max-width: 767px) {
+  .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .result-grid { grid-template-columns: 1fr; }
 }
 </style>

@@ -73,7 +73,7 @@
         "path": "/product/withdrawal",
         "component": "product/withdrawal/index",
         "meta": {
-          "title": "结算管理",
+          "title": "月结管理",
           "icon": "icon-export",
           "type": "M"
         }
@@ -362,6 +362,94 @@
       {
         "label": "未完成",
         "value": "blocked",
+        "color": "gray"
+      }
+    ],
+    "monthly_settlement_cycle_status": [
+      {
+        "label": "未生成记录",
+        "value": "not_generated",
+        "color": "gray"
+      },
+      {
+        "label": "待导出",
+        "value": "pending_export",
+        "color": "orange"
+      },
+      {
+        "label": "结算中",
+        "value": "exported",
+        "color": "blue"
+      },
+      {
+        "label": "部分完成",
+        "value": "partial",
+        "color": "purple"
+      },
+      {
+        "label": "已完成",
+        "value": "settled",
+        "color": "green"
+      }
+    ],
+    "monthly_settlement_order_status": [
+      {
+        "label": "待导出",
+        "value": "pending_export",
+        "color": "orange"
+      },
+      {
+        "label": "待到账",
+        "value": "exported",
+        "color": "blue"
+      },
+      {
+        "label": "已到账",
+        "value": "paid",
+        "color": "green"
+      },
+      {
+        "label": "打款失败",
+        "value": "payment_failed",
+        "color": "red"
+      }
+    ],
+    "settlement_eligibility_status": [
+      {
+        "label": "可月结",
+        "value": "eligible",
+        "color": "green"
+      },
+      {
+        "label": "认证未完成",
+        "value": "deferred_certification",
+        "color": "orange"
+      },
+      {
+        "label": "收款信息未完成",
+        "value": "deferred_payment",
+        "color": "orange"
+      },
+      {
+        "label": "结算条件未完成",
+        "value": "deferred_both",
+        "color": "red"
+      }
+    ],
+    "payment_account_status": [
+      {
+        "label": "已填写",
+        "value": "complete",
+        "color": "green"
+      },
+      {
+        "label": "信息不完整",
+        "value": "incomplete",
+        "color": "orange"
+      },
+      {
+        "label": "未填写",
+        "value": "missing",
         "color": "gray"
       }
     ],

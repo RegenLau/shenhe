@@ -228,37 +228,33 @@
         </a-col>
 
         <a-col :xs="24" :xl="9">
-          <a-card :bordered="false" class="section-card" title="积分结算">
+          <a-card :bordered="false" class="section-card" title="积分月结">
             <template #extra>
-              <a-link @click="goTo('/product/withdrawal')">结算管理</a-link>
+              <a-link @click="goTo('/product/withdrawal')">月结管理</a-link>
             </template>
 
             <ul class="settlement-list">
               <li>
-                <span>累计积分</span>
+                <span>累计产生</span>
                 <strong>{{ formatPoints(overview.settlement.accrued_amount_cent) }}</strong>
               </li>
               <li>
-                <span>可提现</span>
+                <span>待导出</span>
                 <strong class="settlement-highlight">
-                  {{ formatPoints(overview.settlement.withdrawable_amount_cent) }}
+                  {{ formatPoints(overview.settlement.pending_export_amount_cent) }}
                 </strong>
               </li>
               <li>
-                <span>待导出</span>
-                <strong>{{ formatPoints(overview.settlement.pending_withdrawal_amount_cent) }}</strong>
-              </li>
-              <li>
-                <span>已导出待结算</span>
+                <span>已导出待到账</span>
                 <strong>{{ formatPoints(overview.settlement.exported_amount_cent) }}</strong>
               </li>
               <li>
-                <span>已结算</span>
+                <span>已到账</span>
                 <strong>{{ formatPoints(overview.settlement.settled_amount_cent) }}</strong>
               </li>
             </ul>
             <p class="settlement-note">
-              1 积分 = 1 元；项目名单导出后由基金会人工结算，结果通过同项目名单导入回写。
+              1 积分 = 1 元；每月 1 日自动生成上月结算单。认证或收款信息未完成时积分继续累计，零积分不生成结算记录。
             </p>
           </a-card>
         </a-col>
@@ -384,7 +380,7 @@ const metrics = computed(() => [
   },
   {
     key: 'settlement',
-    title: '累计积分',
+    title: '月结积分',
     value: centToYuan(overview.settlement.accrued_amount_cent),
     suffix: '积分',
     icon: 'icon-gift',
@@ -392,8 +388,8 @@ const metrics = computed(() => [
     route: '/product/withdrawal',
     chips: [
       {
-        label: '可提现',
-        value: centToYuan(overview.settlement.withdrawable_amount_cent)
+        label: '待导出',
+        value: centToYuan(overview.settlement.pending_export_amount_cent)
       }
     ]
   }

@@ -9,7 +9,7 @@
   "scripts": {
     "dev": "node --watch src/server.js",
     "start": "node src/server.js",
-    "validate": "node --check src/server.js && node --test src/question-bank.test.js"
+    "validate": "node --check src/server.js && node --test src/*.test.js"
   },
   "dependencies": {
     "cors": "^2.8.5",

@@ -40,6 +40,26 @@ const reviewIssueTypeLabels = {
 }
 const withdrawalSettlementStatuses = ['pending', 'exported', 'settled']
 const settlementBatchStatuses = ['pending', 'exported', 'partial', 'settled', 'blocked']
+const monthlySettlementOrderStatuses = [
+  'pending_export',
+  'exported',
+  'paid',
+  'payment_failed'
+]
+const monthlySettlementCycleStatuses = [
+  'not_generated',
+  'pending_export',
+  'exported',
+  'partial',
+  'settled'
+]
+const settlementHistoryStatuses = [
+  ...new Set([
+    ...monthlySettlementCycleStatuses,
+    ...monthlySettlementOrderStatuses
+  ])
+]
+const paymentAccountStatuses = ['complete', 'incomplete', 'missing']
 const doctorAccountStatuses = ['pending_activation', 'active', 'disabled']
 const doctorCertificationStatuses = [
   'unsubmitted',
@@ -123,6 +143,19 @@ const taskItems = buildInitialTaskItems(tasks, questionBankRows)
 syncInitialWithdrawalAmounts(withdrawals, taskItems)
 // Submitted review records freeze the question-bank metadata available at submission time.
 const reviews = buildReviews(reviewFixture, { taskItems })
+const doctorPaymentAccounts = buildDoctorPaymentAccounts(doctors, withdrawals)
+const pointLedger = buildPointLedger(reviews)
+const monthlySettlementCycles = []
+const monthlySettlementOrders = []
+const monthlySettlementExports = new Map()
+const monthlySettlementImportPreviews = new Map()
+const monthlySettlementAuditLogs = []
+const monthlySettlementJobLogs = []
+let nextMonthlySettlementCycleId = 1
+let nextMonthlySettlementOrderId = 1
+let nextMonthlySettlementExportId = 1
+let nextMonthlySettlementJobLogId = 1
+initializeMonthlySettlementState()
 workbenchFixture.doctors.total = doctors.length
 workbenchFixture.doctors.active = doctors.filter(
   (doctor) => doctor.account_status === 'active'
@@ -141,6 +174,7 @@ workbenchFixture.reviews.rejected = reviews.filter(
   (review) => review.result === 'rejected'
 ).length
 syncWithdrawalWorkbench()
+syncMonthlySettlementWorkbench()
 syncCertificationWorkbench()
 const importPreviews = new Map()
 const withdrawalSettlementPreviews = new Map()
@@ -194,6 +228,23 @@ function formatDateTime(date = new Date()) {
     `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`,
     `${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
   ].join(' ')
+}
+
+function isValidDateTimeText(value) {
+  const text = String(value || '').trim()
+  if (!/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(text)) return false
+  const [datePart, timePart] = text.split(' ')
+  const [year, month, day] = datePart.split('-').map(Number)
+  const [hour, minute, second] = timePart.split(':').map(Number)
+  const date = new Date(year, month - 1, day, hour, minute, second)
+  return (
+    date.getFullYear() === year &&
+    date.getMonth() === month - 1 &&
+    date.getDate() === day &&
+    date.getHours() === hour &&
+    date.getMinutes() === minute &&
+    date.getSeconds() === second
+  )
 }
 
 function normalizeDoctorConfigPayload(payload = {}, fallbackType = '') {
@@ -1457,6 +1508,1025 @@ function toPublicWithdrawal(withdrawal, includeSourceTasks = false) {
   return result
 }
 
+function normalizeSettlementMonth(value) {
+  const month = String(value || '').trim()
+  return /^\d{4}-(0[1-9]|1[0-2])$/.test(month) ? month : ''
+}
+
+function settlementMonthLabel(month) {
+  const [year, value] = String(month || '').split('-')
+  return year && value ? `${year} 年 ${Number(value)} 月` : '—'
+}
+
+function nextSettlementMonth(month) {
+  const normalized = normalizeSettlementMonth(month)
+  if (!normalized) return ''
+  const [year, value] = normalized.split('-').map(Number)
+  const date = new Date(year, value, 1)
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`
+}
+
+function settlementCycleGeneratedAt(month) {
+  const nextMonth = nextSettlementMonth(month)
+  return nextMonth ? `${nextMonth}-01 00:00:00` : formatDateTime()
+}
+
+function latestLedgerMonth() {
+  return pointLedger
+    .map((item) => item.source_month)
+    .filter(Boolean)
+    .sort()
+    .at(-1) || ''
+}
+
+function buildDoctorPaymentAccounts(doctorRows = [], withdrawalRows = []) {
+  const latestByDoctor = new Map()
+
+  withdrawalRows
+    .slice()
+    .sort((left, right) =>
+      String(left.apply_time || '').localeCompare(String(right.apply_time || ''))
+    )
+    .forEach((withdrawal) => {
+      if (!Number(withdrawal.doctor_id)) return
+      latestByDoctor.set(Number(withdrawal.doctor_id), withdrawal)
+    })
+
+  return doctorRows
+    .map((doctor) => {
+      const source = latestByDoctor.get(doctor.id)
+      if (!source) return null
+      return {
+        id: doctor.id,
+        doctor_id: doctor.id,
+        payee_name: source.doctor_name || doctor.name,
+        id_card_no: source.id_card_no || '',
+        bank_name: source.bank_name || '',
+        bank_card_no: source.bank_card_no || '',
+        status: 'complete',
+        source: 'legacy',
+        confirmed_by: '历史数据迁移',
+        confirmed_at: source.apply_time || null,
+        update_time: source.apply_time || doctor.create_time
+      }
+    })
+    .filter(Boolean)
+}
+
+function getDoctorPaymentAccount(doctorId) {
+  return doctorPaymentAccounts.find(
+    (item) => item.doctor_id === Number(doctorId)
+  ) || null
+}
+
+function isPaymentAccountComplete(account) {
+  return Boolean(
+    account &&
+      account.status === 'complete' &&
+      account.payee_name &&
+      /^\d{17}[\dXx]$/.test(account.id_card_no) &&
+      account.bank_name &&
+      /^\d{16,19}$/.test(account.bank_card_no)
+  )
+}
+
+function toPublicPaymentAccount(account, includeSensitive = false) {
+  if (!account) {
+    return {
+      status: 'missing',
+      payee_name: '',
+      id_card_masked: '',
+      bank_name: '',
+      bank_card_masked: '',
+      source: '',
+      update_time: null
+    }
+  }
+
+  return {
+    id: account.id,
+    doctor_id: account.doctor_id,
+    status: isPaymentAccountComplete(account) ? 'complete' : 'incomplete',
+    payee_name: account.payee_name,
+    id_card_masked: maskIdCard(account.id_card_no),
+    bank_name: account.bank_name,
+    bank_card_masked: maskBankCard(account.bank_card_no),
+    source: account.source,
+    confirmed_by: account.confirmed_by,
+    confirmed_at: account.confirmed_at,
+    update_time: account.update_time,
+    ...(includeSensitive
+      ? {
+          id_card_no: account.id_card_no,
+          bank_card_no: account.bank_card_no
+        }
+      : {})
+  }
+}
+
+function buildPointLedger(reviewRows = []) {
+  return reviewRows
+    .map((review) => {
+      const task = tasks.find((item) => item.id === review.task_id)
+      const hydratedTask = task ? hydrateTask(task) : null
+      return {
+        id: review.id,
+        review_id: review.id,
+        review_no: review.review_no,
+        doctor_id: review.doctor_id,
+        task_id: review.task_id,
+        task_no: review.task_no,
+        foundation_name: hydratedTask?.foundation_name || '',
+        project_name: hydratedTask?.project_name || '',
+        identifier_name: hydratedTask?.identifier_name || '',
+        final_level: review.final_level,
+        amount_cent: Number(review.unit_reward_cent) || 0,
+        earned_at: review.review_time,
+        source_month: String(review.review_time || '').slice(0, 7),
+        status: 'unsettled',
+        settlement_order_id: null,
+        settled_at: null
+      }
+    })
+    .filter((item) => item.amount_cent !== 0 && item.source_month)
+    .sort(
+      (left, right) =>
+        String(left.earned_at).localeCompare(String(right.earned_at)) ||
+        left.id - right.id
+    )
+}
+
+function getMonthlySettlementEligibility(doctorId) {
+  const doctor = doctors.find((item) => item.id === Number(doctorId))
+  const paymentAccount = getDoctorPaymentAccount(doctorId)
+  const certificationComplete = doctor?.certification_status === 'approved'
+  const paymentComplete = isPaymentAccountComplete(paymentAccount)
+  let status = 'eligible'
+  let reason = ''
+
+  if (!certificationComplete && !paymentComplete) {
+    status = 'deferred_both'
+    reason = '专业认证未通过且收款信息未填写，积分将继续累计'
+  } else if (!certificationComplete) {
+    status = 'deferred_certification'
+    reason = '专业认证未通过，积分将继续累计'
+  } else if (!paymentComplete) {
+    status = 'deferred_payment'
+    reason = '收款信息未填写完整，积分将继续累计'
+  }
+
+  return {
+    eligible: certificationComplete && paymentComplete,
+    status,
+    reason,
+    certification_complete: certificationComplete,
+    certification_status: doctor?.certification_status || 'unsubmitted',
+    payment_complete: paymentComplete,
+    payment_account_status: paymentComplete
+      ? 'complete'
+      : paymentAccount
+        ? 'incomplete'
+        : 'missing'
+  }
+}
+
+function ensureMonthlySettlementCycle(month, generatedAt = null) {
+  const normalized = normalizeSettlementMonth(month)
+  if (!normalized) return null
+  const existing = monthlySettlementCycles.find(
+    (item) => item.settlement_month === normalized
+  )
+  if (existing) return existing
+
+  const cycle = {
+    id: nextMonthlySettlementCycleId,
+    cycle_no: `YJ${normalized.replace('-', '')}`,
+    settlement_month: normalized,
+    period_start: `${normalized}-01 00:00:00`,
+    period_end: `${normalized}-${new Date(
+      Number(normalized.slice(0, 4)),
+      Number(normalized.slice(5, 7)),
+      0
+    ).getDate()} 23:59:59`,
+    generated_at: generatedAt || settlementCycleGeneratedAt(normalized),
+    auto_run_completed: false,
+    deferred_doctors: []
+  }
+  nextMonthlySettlementCycleId += 1
+  monthlySettlementCycles.push(cycle)
+  return cycle
+}
+
+function ledgerRowsForOrder(orderId) {
+  return pointLedger.filter(
+    (item) => item.settlement_order_id === Number(orderId)
+  )
+}
+
+function createMonthlySettlementOrder({
+  cycle,
+  doctorId,
+  ledgerRows,
+  settlementType = 'auto',
+  generatedAt = formatDateTime(),
+  cutoffAt = null,
+  manualReason = '',
+  settlementNo = '',
+  initialStatus = 'pending_export',
+  exportedAt = null,
+  paidAt = null,
+  paymentSnapshot = null
+}) {
+  const availableRows = ledgerRows.filter(
+    (item) => item.status === 'unsettled' && !item.settlement_order_id
+  )
+  const amountCent = availableRows.reduce(
+    (total, item) => total + Number(item.amount_cent || 0),
+    0
+  )
+
+  // A doctor with zero settleable points must never receive a settlement record.
+  if (availableRows.length === 0 || amountCent <= 0) return null
+
+  const doctor = doctors.find((item) => item.id === Number(doctorId))
+  if (!doctor) return null
+  const calculationMonth =
+    settlementType === 'manual'
+      ? String(cutoffAt || generatedAt).slice(0, 7)
+      : cycle.settlement_month
+  const settlementMonth = cycle?.settlement_month || calculationMonth
+  const currentMonthAmountCent = availableRows
+    .filter((item) => item.source_month === calculationMonth)
+    .reduce((total, item) => total + Number(item.amount_cent || 0), 0)
+  const orderId = nextMonthlySettlementOrderId
+  const order = {
+    id: orderId,
+    settlement_no:
+      settlementNo ||
+      (settlementType === 'manual'
+        ? `RGJS${String(generatedAt).slice(0, 10).replaceAll('-', '')}${String(orderId).padStart(5, '0')}`
+        : `JS${settlementMonth.replace('-', '')}${String(orderId).padStart(5, '0')}`),
+    cycle_id: cycle?.id || null,
+    doctor_id: doctor.id,
+    settlement_type: settlementType,
+    calculation_month: calculationMonth,
+    cutoff_at: cutoffAt || cycle?.period_end || generatedAt,
+    generated_at: generatedAt,
+    certification_status: doctor.certification_status,
+    manual_reason: manualReason,
+    amount_cent: amountCent,
+    current_month_amount_cent: currentMonthAmountCent,
+    carryover_amount_cent: amountCent - currentMonthAmountCent,
+    review_count: availableRows.length,
+    source_months: [...new Set(availableRows.map((item) => item.source_month))].sort(),
+    status: initialStatus,
+    exported_at: exportedAt,
+    paid_at: paidAt,
+    transaction_no: '',
+    payment_failed_reason: '',
+    payment_snapshot:
+      paymentSnapshot ||
+      toPublicPaymentAccount(getDoctorPaymentAccount(doctor.id), true),
+    export_id: null
+  }
+  nextMonthlySettlementOrderId += 1
+  monthlySettlementOrders.push(order)
+
+  availableRows.forEach((item) => {
+    item.status = initialStatus === 'paid' ? 'settled' : 'locked'
+    item.settlement_order_id = order.id
+    item.settled_at = initialStatus === 'paid' ? paidAt || generatedAt : null
+  })
+
+  monthlySettlementAuditLogs.push({
+    id: monthlySettlementAuditLogs.length + 1,
+    action: settlementType === 'manual' ? 'manual_created' : 'order_created',
+    order_id: order.id,
+    operator:
+      settlementType === 'legacy'
+        ? '历史数据迁移'
+        : settlementType === 'manual'
+          ? '运营管理员'
+          : '系统月结任务',
+    remark: manualReason,
+    create_time: generatedAt
+  })
+  return order
+}
+
+function initializeMonthlySettlementState() {
+  const ledgerByTask = new Map()
+  pointLedger.forEach((item) => {
+    const rows = ledgerByTask.get(item.task_id) || []
+    rows.push(item)
+    ledgerByTask.set(item.task_id, rows)
+  })
+  ledgerByTask.forEach((rows) => {
+    rows.sort(
+      (left, right) =>
+        String(left.earned_at).localeCompare(String(right.earned_at)) ||
+        left.id - right.id
+    )
+  })
+
+  const consumedByTask = new Map()
+  withdrawals
+    .slice()
+    .sort(
+      (left, right) =>
+        String(left.apply_time).localeCompare(String(right.apply_time)) ||
+        Number(left.id) - Number(right.id)
+    )
+    .forEach((withdrawal) => {
+      const taskId = Number(withdrawal.source_task_id)
+      const count = Math.max(Number(withdrawal.source_review_count) || 0, 0)
+      const offset = consumedByTask.get(taskId) || 0
+      const selected = (ledgerByTask.get(taskId) || []).slice(offset, offset + count)
+      consumedByTask.set(taskId, offset + count)
+
+      if (!['exported', 'settled'].includes(withdrawal.settlement_status)) return
+      const settlementMonth =
+        selected.map((item) => item.source_month).sort().at(-1) ||
+        String(withdrawal.apply_time || '').slice(0, 7)
+      const cycle = ensureMonthlySettlementCycle(
+        settlementMonth,
+        settlementCycleGeneratedAt(settlementMonth)
+      )
+      const status = withdrawal.settlement_status === 'settled' ? 'paid' : 'exported'
+      createMonthlySettlementOrder({
+        cycle,
+        doctorId: withdrawal.doctor_id,
+        ledgerRows: selected,
+        settlementType: 'legacy',
+        generatedAt: withdrawal.apply_time,
+        cutoffAt: withdrawal.apply_time,
+        settlementNo: withdrawal.withdrawal_no,
+        initialStatus: status,
+        exportedAt: withdrawal.export_time,
+        paidAt: withdrawal.settled_time || null,
+        paymentSnapshot: {
+          status: 'complete',
+          doctor_id: withdrawal.doctor_id,
+          payee_name: withdrawal.doctor_name,
+          id_card_no: withdrawal.id_card_no,
+          id_card_masked: maskIdCard(withdrawal.id_card_no),
+          bank_name: withdrawal.bank_name,
+          bank_card_no: withdrawal.bank_card_no,
+          bank_card_masked: maskBankCard(withdrawal.bank_card_no),
+          source: 'legacy'
+        }
+      })
+    })
+
+  const initialMonth = latestLedgerMonth()
+  if (initialMonth) {
+    const executedAt = settlementCycleGeneratedAt(initialMonth)
+    const result = runMonthlySettlementCycle(initialMonth, executedAt)
+    recordMonthlySettlementJob({
+      month: initialMonth,
+      executedAt,
+      triggerType: 'automatic',
+      result
+    })
+  }
+}
+
+function runMonthlySettlementCycle(month, generatedAt = formatDateTime()) {
+  const normalized = normalizeSettlementMonth(month)
+  if (!normalized) return { error: '月结账期格式必须为 YYYY-MM' }
+  const existing = monthlySettlementCycles.find(
+    (item) => item.settlement_month === normalized
+  )
+  if (existing?.auto_run_completed) return { cycle: existing, created_count: 0 }
+
+  const periodEnd = `${normalized}-${new Date(
+    Number(normalized.slice(0, 4)),
+    Number(normalized.slice(5, 7)),
+    0
+  ).getDate()} 23:59:59`
+  const candidates = pointLedger.filter(
+    (item) =>
+      item.status === 'unsettled' &&
+      !item.settlement_order_id &&
+      item.earned_at <= periodEnd
+  )
+  const doctorGroups = new Map()
+  candidates.forEach((item) => {
+    const rows = doctorGroups.get(item.doctor_id) || []
+    rows.push(item)
+    doctorGroups.set(item.doctor_id, rows)
+  })
+
+  const positiveGroups = [...doctorGroups.entries()].filter(([, rows]) =>
+    rows.reduce((total, item) => total + Number(item.amount_cent || 0), 0) > 0
+  )
+  if (positiveGroups.length === 0 && !existing) {
+    return { cycle: null, created_count: 0, no_settleable_points: true }
+  }
+
+  const cycle = existing || ensureMonthlySettlementCycle(normalized, generatedAt)
+  cycle.deferred_doctors = []
+  let createdCount = 0
+
+  positiveGroups.forEach(([doctorId, rows]) => {
+    const doctor = doctors.find((item) => item.id === Number(doctorId))
+    if (!doctor) return
+    const eligibility = getMonthlySettlementEligibility(doctorId)
+    const amountCent = rows.reduce(
+      (total, item) => total + Number(item.amount_cent || 0),
+      0
+    )
+    if (amountCent <= 0) return
+
+    if (eligibility.eligible) {
+      const order = createMonthlySettlementOrder({
+        cycle,
+        doctorId,
+        ledgerRows: rows,
+        generatedAt,
+        cutoffAt: periodEnd
+      })
+      if (order) {
+        createdCount += 1
+      }
+      return
+    }
+
+    cycle.deferred_doctors.push({
+      doctor_id: doctor.id,
+      doctor_name: doctor.name,
+      doctor_phone_masked: maskPhone(doctor.phone),
+      hospital: doctor.hospital,
+      department: doctor.department,
+      accrued_amount_cent: amountCent,
+      review_count: rows.length,
+      source_months: [...new Set(rows.map((item) => item.source_month))].sort(),
+      ...eligibility
+    })
+  })
+
+  cycle.auto_run_completed = true
+  return { cycle, created_count: createdCount }
+}
+
+function recordMonthlySettlementJob({
+  month,
+  executedAt = formatDateTime(),
+  triggerType = 'manual',
+  result
+}) {
+  const normalized = normalizeSettlementMonth(month)
+  const cycle = result?.cycle || null
+  const noSettleablePoints = result?.no_settleable_points === true
+  const createdCount = Number(result?.created_count || 0)
+  const deferredCount = Number(cycle?.deferred_doctors?.length || 0)
+  const log = {
+    id: nextMonthlySettlementJobLogId,
+    job_no: `YJJOB${String(nextMonthlySettlementJobLogId).padStart(6, '0')}`,
+    settlement_month: normalized,
+    trigger_type: triggerType,
+    status: result?.error ? 'failed' : 'success',
+    cycle_id: cycle?.id || null,
+    cycle_no: cycle?.cycle_no || '',
+    created_order_count: createdCount,
+    deferred_doctor_count: deferredCount,
+    no_settleable_points: noSettleablePoints,
+    result_message: result?.error
+      ? result.error
+      : noSettleablePoints
+        ? '当前账期没有可结算积分，未生成月结记录'
+        : createdCount > 0
+          ? `已生成 ${createdCount} 张医生结算单`
+          : '月结任务已执行，无需重复生成',
+    executed_at: executedAt
+  }
+  nextMonthlySettlementJobLogId += 1
+  monthlySettlementJobLogs.unshift(log)
+  return log
+}
+
+function toPublicMonthlySettlementOrder(order, includeLines = false) {
+  const doctor = doctors.find((item) => item.id === order.doctor_id)
+  const rows = ledgerRowsForOrder(order.id)
+  const { payment_snapshot: paymentSnapshot, ...publicOrder } = order
+  const projectCount = new Set(
+    rows.map((item) =>
+      [item.foundation_name, item.project_name, item.identifier_name].join('|')
+    )
+  ).size
+  const result = {
+    ...publicOrder,
+    doctor_name: doctor?.name || '—',
+    doctor_phone_masked: maskPhone(doctor?.phone),
+    hospital: doctor?.hospital || '',
+    department: doctor?.department || '',
+    project_count: projectCount,
+    payment_account: paymentSnapshot
+      ? {
+          status: paymentSnapshot.status || 'complete',
+          payee_name: paymentSnapshot.payee_name,
+          id_card_masked:
+            paymentSnapshot.id_card_masked ||
+            maskIdCard(paymentSnapshot.id_card_no),
+          bank_name: paymentSnapshot.bank_name,
+          bank_card_masked:
+            paymentSnapshot.bank_card_masked ||
+            maskBankCard(paymentSnapshot.bank_card_no)
+        }
+      : toPublicPaymentAccount(getDoctorPaymentAccount(order.doctor_id))
+  }
+
+  if (includeLines) {
+    result.lines = rows.map((item) => {
+      const review = reviews.find((row) => row.id === item.review_id)
+      return {
+        ...item,
+        drug_name: review?.drug_name || '',
+        drug_specification: review?.drug_specification || '',
+        type_name: review?.type_name || '',
+        question: review?.question || '',
+        answer: review?.answer || '',
+        review_result: review?.result || '',
+        issue_type: review?.issue_type || '',
+        review_comment: review?.review_comment || ''
+      }
+    })
+    result.audit_logs = monthlySettlementAuditLogs.filter(
+      (item) => item.order_id === order.id
+    )
+  }
+  return result
+}
+
+function resolveMonthlySettlementCycleStatus(orders = [], deferredDoctors = []) {
+  if (deferredDoctors.length > 0) return 'partial'
+  if (orders.length === 0) return 'pending_export'
+  if (orders.every((item) => item.status === 'paid')) return 'settled'
+  if (orders.every((item) => item.status === 'pending_export')) return 'pending_export'
+  if (orders.every((item) => item.status === 'exported')) return 'exported'
+  return 'partial'
+}
+
+function toPublicMonthlySettlementCycle(cycle, includeDoctors = false) {
+  const orders = monthlySettlementOrders.filter((item) => item.cycle_id === cycle.id)
+  const deferredDoctors = cycle.deferred_doctors || []
+  const result = {
+    id: cycle.id,
+    batch_no: cycle.cycle_no,
+    cycle_no: cycle.cycle_no,
+    settlement_month: cycle.settlement_month,
+    display_title: `${settlementMonthLabel(cycle.settlement_month)}月结`,
+    period_start: cycle.period_start,
+    period_end: cycle.period_end,
+    generated_at: cycle.generated_at,
+    status: resolveMonthlySettlementCycleStatus(orders, deferredDoctors),
+    doctor_count: new Set([
+      ...orders.map((item) => item.doctor_id),
+      ...deferredDoctors.map((item) => item.doctor_id)
+    ]).size,
+    order_count: orders.length,
+    pending_export_count: orders.filter((item) => item.status === 'pending_export').length,
+    exported_count: orders.filter((item) => item.status === 'exported').length,
+    payment_failed_count: orders.filter((item) => item.status === 'payment_failed').length,
+    paid_count: orders.filter((item) => item.status === 'paid').length,
+    deferred_doctor_count: deferredDoctors.length,
+    deferred_amount_cent: deferredDoctors.reduce(
+      (total, item) => total + Number(item.accrued_amount_cent || 0),
+      0
+    ),
+    pending_export_amount_cent: orders
+      .filter((item) => item.status === 'pending_export')
+      .reduce((total, item) => total + Number(item.amount_cent || 0), 0),
+    processing_amount_cent: orders
+      .filter((item) => ['exported', 'payment_failed'].includes(item.status))
+      .reduce((total, item) => total + Number(item.amount_cent || 0), 0),
+    paid_amount_cent: orders
+      .filter((item) => item.status === 'paid')
+      .reduce((total, item) => total + Number(item.amount_cent || 0), 0),
+    total_amount_cent: orders.reduce(
+      (total, item) => total + Number(item.amount_cent || 0),
+      0
+    )
+  }
+  if (includeDoctors) {
+    result.doctor_settlements = orders.map((item) =>
+      toPublicMonthlySettlementOrder(item)
+    )
+    const cutoffAt = formatDateTime()
+    result.deferred_doctors = deferredDoctors.map((item) => {
+      const currentSettleableAmountCent = pointLedger
+        .filter(
+          (row) =>
+            row.doctor_id === item.doctor_id &&
+            row.status === 'unsettled' &&
+            !row.settlement_order_id &&
+            row.earned_at <= cutoffAt
+        )
+        .reduce((total, row) => total + Number(row.amount_cent || 0), 0)
+      const currentEligibility = getMonthlySettlementEligibility(item.doctor_id)
+      return {
+        ...item,
+        current_settleable_amount_cent: currentSettleableAmountCent,
+        current_payment_complete: currentEligibility.payment_complete,
+        current_payment_account_status: currentEligibility.payment_account_status
+      }
+    })
+  }
+  return result
+}
+
+function buildMonthlySettlementHistoryRows() {
+  const months = new Set([
+    ...monthlySettlementCycles.map((item) => item.settlement_month),
+    ...monthlySettlementJobLogs.map((item) => item.settlement_month)
+  ])
+
+  return [...months]
+    .filter(Boolean)
+    .map((month) => {
+      const cycle = monthlySettlementCycles.find(
+        (item) => item.settlement_month === month
+      )
+      const jobs = monthlySettlementJobLogs
+        .filter((item) => item.settlement_month === month)
+        .sort((left, right) =>
+          String(right.executed_at).localeCompare(String(left.executed_at))
+        )
+      const latestJob = jobs[0] || null
+      const cycleData = cycle
+        ? toPublicMonthlySettlementCycle(cycle)
+        : {
+            id: `history-${month}`,
+            batch_no: '',
+            cycle_no: '',
+            settlement_month: month,
+            display_title: `${settlementMonthLabel(month)}月结`,
+            period_start: `${month}-01 00:00:00`,
+            period_end: `${month}-${new Date(
+              Number(month.slice(0, 4)),
+              Number(month.slice(5, 7)),
+              0
+            ).getDate()} 23:59:59`,
+            generated_at: null,
+            status: 'not_generated',
+            doctor_count: 0,
+            order_count: 0,
+            pending_export_count: 0,
+            exported_count: 0,
+            payment_failed_count: 0,
+            paid_count: 0,
+            deferred_doctor_count: 0,
+            deferred_amount_cent: 0,
+            pending_export_amount_cent: 0,
+            processing_amount_cent: 0,
+            paid_amount_cent: 0,
+            total_amount_cent: 0
+          }
+      return {
+        ...cycleData,
+        cycle_id: cycle?.id || null,
+        has_cycle: Boolean(cycle),
+        execution_count: jobs.length,
+        job_no: latestJob?.job_no || '',
+        trigger_type: latestJob?.trigger_type || '',
+        job_status: latestJob?.status || '',
+        created_order_count: Number(latestJob?.created_order_count || 0),
+        job_deferred_doctor_count: Number(
+          latestJob?.deferred_doctor_count || 0
+        ),
+        no_settleable_points: latestJob?.no_settleable_points === true,
+        result_message: latestJob?.result_message || '暂无任务执行记录',
+        executed_at: latestJob?.executed_at || cycle?.generated_at || null
+      }
+    })
+    .sort((left, right) =>
+      String(right.settlement_month).localeCompare(String(left.settlement_month))
+    )
+}
+
+function buildSettlementHistoryRows() {
+  const monthlyRows = buildMonthlySettlementHistoryRows().map((item) => ({
+    ...item,
+    id: item.cycle_id ? `cycle-${item.cycle_id}` : item.id,
+    record_id: item.cycle_id,
+    record_type: 'monthly_cycle',
+    record_no: item.cycle_no || item.job_no,
+    status_dict: 'monthly_settlement_cycle_status',
+    doctor_name: '',
+    doctor_phone_masked: '',
+    review_count: 0,
+    manual_reason: ''
+  }))
+  const manualRows = monthlySettlementOrders
+    .filter(
+      (item) => item.settlement_type === 'manual' && item.cycle_id === null
+    )
+    .map((order) => {
+      const publicOrder = toPublicMonthlySettlementOrder(order)
+      const isPending = order.status === 'pending_export'
+      const isProcessing = ['exported', 'payment_failed'].includes(order.status)
+      const isPaid = order.status === 'paid'
+      return {
+        id: `manual-${order.id}`,
+        record_id: order.id,
+        record_type: 'manual_settlement',
+        record_no: order.settlement_no,
+        cycle_id: null,
+        has_cycle: false,
+        settlement_month: order.calculation_month,
+        display_title: `${publicOrder.doctor_name}·人工结算`,
+        period_start: null,
+        period_end: order.cutoff_at,
+        generated_at: order.generated_at,
+        executed_at: order.generated_at,
+        status: order.status,
+        status_dict: 'monthly_settlement_order_status',
+        doctor_count: 1,
+        order_count: 1,
+        doctor_name: publicOrder.doctor_name,
+        doctor_phone_masked: publicOrder.doctor_phone_masked,
+        review_count: order.review_count,
+        pending_export_count: isPending ? 1 : 0,
+        exported_count: order.status === 'exported' ? 1 : 0,
+        payment_failed_count: order.status === 'payment_failed' ? 1 : 0,
+        paid_count: isPaid ? 1 : 0,
+        deferred_doctor_count: 0,
+        pending_export_amount_cent: isPending ? order.amount_cent : 0,
+        deferred_amount_cent: 0,
+        processing_amount_cent: isProcessing ? order.amount_cent : 0,
+        paid_amount_cent: isPaid ? order.amount_cent : 0,
+        total_amount_cent: order.amount_cent,
+        execution_count: 0,
+        job_no: '',
+        trigger_type: 'manual_settlement',
+        job_status: '',
+        created_order_count: 1,
+        job_deferred_doctor_count: 0,
+        no_settleable_points: false,
+        result_message: '工作人员人工单独结算，不计入月结账期',
+        manual_reason: order.manual_reason || '',
+        payment_account: publicOrder.payment_account
+      }
+    })
+
+  return [...monthlyRows, ...manualRows].sort(
+    (left, right) =>
+      String(right.settlement_month).localeCompare(String(left.settlement_month)) ||
+      String(right.executed_at || '').localeCompare(String(left.executed_at || '')) ||
+      (left.record_type === 'monthly_cycle' ? -1 : 1)
+  )
+}
+
+function currentDeferredSettlementRows() {
+  const currentMonth = formatDateTime().slice(0, 7)
+  const groups = new Map()
+  pointLedger
+    .filter(
+      (item) =>
+        item.status === 'unsettled' &&
+        !item.settlement_order_id &&
+        item.source_month < currentMonth
+    )
+    .forEach((item) => {
+      const rows = groups.get(item.doctor_id) || []
+      rows.push(item)
+      groups.set(item.doctor_id, rows)
+    })
+  return [...groups.entries()]
+    .map(([doctorId, rows]) => ({
+      doctor_id: doctorId,
+      amount_cent: rows.reduce(
+        (total, item) => total + Number(item.amount_cent || 0),
+        0
+      ),
+      eligibility: getMonthlySettlementEligibility(doctorId)
+    }))
+    .filter((item) => item.amount_cent > 0)
+}
+
+function buildMonthlySettlementSummary() {
+  const currentMonth = formatDateTime().slice(0, 7)
+  const orders = monthlySettlementOrders.filter((item) => item.cycle_id !== null)
+  const deferredRows = currentDeferredSettlementRows()
+  return {
+    total_cycle_count: monthlySettlementCycles.length,
+    current_month_accrued_amount_cent: pointLedger
+      .filter((item) => item.source_month === currentMonth)
+      .reduce((total, item) => total + Number(item.amount_cent || 0), 0),
+    pending_export_count: orders.filter((item) => item.status === 'pending_export').length,
+    pending_export_amount_cent: orders
+      .filter((item) => item.status === 'pending_export')
+      .reduce((total, item) => total + Number(item.amount_cent || 0), 0),
+    deferred_doctor_count: deferredRows.length,
+    deferred_amount_cent: deferredRows.reduce(
+      (total, item) => total + item.amount_cent,
+      0
+    ),
+    processing_count: orders.filter((item) =>
+      ['exported', 'payment_failed'].includes(item.status)
+    ).length,
+    processing_amount_cent: orders
+      .filter((item) => ['exported', 'payment_failed'].includes(item.status))
+      .reduce((total, item) => total + Number(item.amount_cent || 0), 0),
+    paid_count: orders.filter((item) => item.status === 'paid').length,
+    paid_amount_cent: orders
+      .filter((item) => item.status === 'paid')
+      .reduce((total, item) => total + Number(item.amount_cent || 0), 0)
+  }
+}
+
+function syncMonthlySettlementWorkbench() {
+  const summary = buildMonthlySettlementSummary()
+  const totalAccruedCent = pointLedger.reduce(
+    (total, item) => total + Number(item.amount_cent || 0),
+    0
+  )
+  workbenchFixture.settlement.accrued_amount_cent = totalAccruedCent
+  workbenchFixture.settlement.withdrawable_amount_cent =
+    summary.pending_export_amount_cent
+  workbenchFixture.settlement.pending_withdrawal_amount_cent =
+    summary.pending_export_amount_cent
+  workbenchFixture.settlement.pending_export_amount_cent =
+    summary.pending_export_amount_cent
+  workbenchFixture.settlement.exported_amount_cent =
+    summary.processing_amount_cent
+  workbenchFixture.settlement.settled_amount_cent = summary.paid_amount_cent
+  workbenchFixture.updated_at = formatDateTime()
+
+  const todoIndex = workbenchFixture.todos.findIndex(
+    (todo) => todo.id === 'withdrawal_pending'
+  )
+  const pendingCount =
+    summary.pending_export_count + summary.deferred_doctor_count
+  if (pendingCount === 0) {
+    if (todoIndex >= 0) workbenchFixture.todos.splice(todoIndex, 1)
+    return
+  }
+  const todo = {
+    id: 'withdrawal_pending',
+    title: '月结事项待处理',
+    description: `${summary.pending_export_count} 张结算单待导出，${summary.deferred_doctor_count} 位医生因条件未完成而延期。`,
+    count: pendingCount,
+    level: summary.deferred_doctor_count > 0 ? 'warning' : 'info'
+  }
+  if (todoIndex >= 0) workbenchFixture.todos[todoIndex] = todo
+  else workbenchFixture.todos.push(todo)
+}
+
+function createManualMonthlySettlement({ doctorId, reason, operator }) {
+  const doctor = doctors.find((item) => item.id === Number(doctorId))
+  if (!doctor) return { error: '未找到对应医生' }
+  const paymentAccount = getDoctorPaymentAccount(doctor.id)
+  if (!isPaymentAccountComplete(paymentAccount)) {
+    return { error: '请先补齐并确认该医生的收款信息' }
+  }
+  if (!String(reason || '').trim()) return { error: '请填写人工单独结算原因' }
+  if (String(reason).trim().length > 200) {
+    return { error: '人工单独结算原因不能超过 200 个字符' }
+  }
+
+  const cutoffAt = formatDateTime()
+  const rows = pointLedger.filter(
+    (item) =>
+      item.doctor_id === doctor.id &&
+      item.status === 'unsettled' &&
+      !item.settlement_order_id &&
+      item.earned_at <= cutoffAt
+  )
+  const amountCent = rows.reduce(
+    (total, item) => total + Number(item.amount_cent || 0),
+    0
+  )
+  if (amountCent <= 0) {
+    return { error: '该医生当前没有可结算积分，未生成结算记录' }
+  }
+
+  const order = createMonthlySettlementOrder({
+    cycle: null,
+    doctorId: doctor.id,
+    ledgerRows: rows,
+    settlementType: 'manual',
+    generatedAt: cutoffAt,
+    cutoffAt,
+    manualReason: String(reason).trim()
+  })
+  if (!order) return { error: '该医生当前没有可结算积分，未生成结算记录' }
+  monthlySettlementAuditLogs.push({
+    id: monthlySettlementAuditLogs.length + 1,
+    action: 'manual_approved',
+    order_id: order.id,
+    operator: operator || '运营管理员',
+    remark: String(reason).trim(),
+    create_time: cutoffAt
+  })
+  syncMonthlySettlementWorkbench()
+  return { order }
+}
+
+function buildManualSettlementCandidates(keyword = '') {
+  const cutoffAt = formatDateTime()
+  const currentMonth = cutoffAt.slice(0, 7)
+  const doctorGroups = new Map()
+
+  pointLedger
+    .filter(
+      (item) =>
+        item.status === 'unsettled' &&
+        !item.settlement_order_id &&
+        item.earned_at <= cutoffAt
+    )
+    .forEach((item) => {
+      const rows = doctorGroups.get(item.doctor_id) || []
+      rows.push(item)
+      doctorGroups.set(item.doctor_id, rows)
+    })
+
+  const normalizedKeyword = String(keyword || '').trim().toLowerCase()
+  return [...doctorGroups.entries()]
+    .map(([doctorId, rows]) => {
+      const doctor = doctors.find((item) => item.id === Number(doctorId))
+      if (!doctor) return null
+      const amountCent = rows.reduce(
+        (total, item) => total + Number(item.amount_cent || 0),
+        0
+      )
+      if (amountCent <= 0) return null
+      const currentMonthAmountCent = rows
+        .filter((item) => item.source_month === currentMonth)
+        .reduce((total, item) => total + Number(item.amount_cent || 0), 0)
+      const eligibility = getMonthlySettlementEligibility(doctor.id)
+      return {
+        doctor_id: doctor.id,
+        doctor_name: doctor.name,
+        doctor_phone_masked: maskPhone(doctor.phone),
+        hospital: doctor.hospital,
+        department: doctor.department,
+        amount_cent: amountCent,
+        current_month_amount_cent: currentMonthAmountCent,
+        carryover_amount_cent: amountCent - currentMonthAmountCent,
+        review_count: rows.length,
+        source_months: [...new Set(rows.map((item) => item.source_month))].sort(),
+        ...eligibility,
+        payment_account: toPublicPaymentAccount(
+          getDoctorPaymentAccount(doctor.id)
+        )
+      }
+    })
+    .filter(Boolean)
+    .filter((item) => {
+      if (!normalizedKeyword) return true
+      return [
+        item.doctor_name,
+        item.doctor_phone_masked,
+        item.hospital,
+        item.department
+      ].some((value) =>
+        String(value || '').toLowerCase().includes(normalizedKeyword)
+      )
+    })
+    .sort(
+      (left, right) =>
+        right.amount_cent - left.amount_cent ||
+        String(left.doctor_name).localeCompare(String(right.doctor_name), 'zh-CN')
+    )
+}
+
+function buildDoctorSettlementOverview(doctorId) {
+  const doctor = doctors.find((item) => item.id === Number(doctorId))
+  if (!doctor) return null
+  const currentMonth = formatDateTime().slice(0, 7)
+  const unsettledRows = pointLedger.filter(
+    (item) =>
+      item.doctor_id === doctor.id &&
+      item.status === 'unsettled' &&
+      !item.settlement_order_id
+  )
+  const currentMonthAmountCent = unsettledRows
+    .filter((item) => item.source_month === currentMonth)
+    .reduce((total, item) => total + Number(item.amount_cent || 0), 0)
+  const carryoverAmountCent = unsettledRows
+    .filter((item) => item.source_month < currentMonth)
+    .reduce((total, item) => total + Number(item.amount_cent || 0), 0)
+  const eligibility = getMonthlySettlementEligibility(doctor.id)
+  return {
+    doctor_id: doctor.id,
+    current_month: currentMonth,
+    current_month_amount_cent: currentMonthAmountCent,
+    carryover_amount_cent: carryoverAmountCent,
+    estimated_next_settlement_amount_cent:
+      currentMonthAmountCent + carryoverAmountCent,
+    eligibility,
+    payment_account: toPublicPaymentAccount(getDoctorPaymentAccount(doctor.id)),
+    next_cycle_at: settlementCycleGeneratedAt(currentMonth),
+    settlement_records: monthlySettlementOrders
+      .filter((item) => item.doctor_id === doctor.id)
+      .sort((left, right) =>
+        String(right.generated_at).localeCompare(String(left.generated_at))
+      )
+      .map((item) => toPublicMonthlySettlementOrder(item))
+  }
+}
+
 function escapeCsvCell(value) {
   if (value?.type === 'excelText') {
     const exactText = String(value.value ?? '').replaceAll('"', '""')
@@ -1518,6 +2588,366 @@ function parseCsv(content) {
   row.push(field.trim())
   if (row.some((value) => value !== '')) rows.push(row)
   return rows
+}
+
+function styleSettlementWorksheet(worksheet) {
+  worksheet.views = [{ state: 'frozen', ySplit: 1 }]
+  worksheet.autoFilter = {
+    from: { row: 1, column: 1 },
+    to: { row: 1, column: worksheet.columnCount }
+  }
+  const header = worksheet.getRow(1)
+  header.height = 26
+  header.font = { bold: true, color: { argb: 'FFFFFFFF' } }
+  header.fill = {
+    type: 'pattern',
+    pattern: 'solid',
+    fgColor: { argb: 'FF2F80ED' }
+  }
+  header.alignment = { vertical: 'middle', horizontal: 'center' }
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return
+    row.alignment = { vertical: 'top', wrapText: true }
+  })
+}
+
+function fullPaymentSnapshotForOrder(order) {
+  const account = getDoctorPaymentAccount(order.doctor_id)
+  if (!isPaymentAccountComplete(account)) return null
+  return toPublicPaymentAccount(account, true)
+}
+
+async function buildMonthlySettlementExportFiles(orders = [], exportNo = '') {
+  const isManualExport =
+    orders.length > 0 && orders.every((item) => item.settlement_type === 'manual')
+  const preparedOrders = orders.map((order) => ({
+    order,
+    paymentSnapshot: fullPaymentSnapshotForOrder(order)
+  }))
+  const missingAccount = preparedOrders.find((item) => !item.paymentSnapshot)
+  if (missingAccount) {
+    const doctor = doctors.find((item) => item.id === missingAccount.order.doctor_id)
+    return { error: `医生“${doctor?.name || '未知'}”的收款信息不完整，不能导出` }
+  }
+
+  const statementWorkbook = new ExcelJS.Workbook()
+  statementWorkbook.creator = '希息药事后台'
+  statementWorkbook.created = new Date()
+  const statementSheet = statementWorkbook.addWorksheet(
+    isManualExport ? '人工结算单' : '月度结算单'
+  )
+  statementSheet.columns = [
+    { header: '导出批次号', key: 'export_no', width: 22 },
+    { header: '结算单号', key: 'settlement_no', width: 22 },
+    { header: '账期', key: 'settlement_month', width: 12 },
+    { header: '结算类型', key: 'settlement_type', width: 14 },
+    { header: '医生姓名', key: 'doctor_name', width: 14 },
+    { header: '手机号', key: 'doctor_phone', width: 16 },
+    { header: '身份证号', key: 'id_card_no', width: 22 },
+    { header: '开户行', key: 'bank_name', width: 24 },
+    { header: '银行卡号', key: 'bank_card_no', width: 24 },
+    { header: '本期积分', key: 'current_points', width: 14 },
+    { header: '递延积分', key: 'carryover_points', width: 14 },
+    { header: '结算总积分', key: 'total_points', width: 16 },
+    { header: '结算金额(元)', key: 'amount_yuan', width: 16 },
+    { header: '来源月份', key: 'source_months', width: 20 },
+    { header: '审核条数', key: 'review_count', width: 12 },
+    { header: '结算状态', key: 'settlement_status', width: 14 },
+    { header: '到账结果', key: 'payment_result', width: 14 },
+    { header: '到账时间', key: 'paid_at', width: 20 },
+    { header: '银行流水号', key: 'transaction_no', width: 24 },
+    { header: '失败原因', key: 'failure_reason', width: 28 }
+  ]
+
+  preparedOrders.forEach(({ order, paymentSnapshot }) => {
+    const doctor = doctors.find((item) => item.id === order.doctor_id)
+    statementSheet.addRow({
+      export_no: exportNo,
+      settlement_no: order.settlement_no,
+      settlement_month:
+        monthlySettlementCycles.find((item) => item.id === order.cycle_id)
+          ?.settlement_month || order.calculation_month || '',
+      settlement_type:
+        order.settlement_type === 'manual'
+          ? '人工结算'
+          : order.settlement_type === 'legacy'
+            ? '历史结算'
+            : '系统月结',
+      doctor_name: doctor?.name || '',
+      doctor_phone: doctor?.phone || '',
+      id_card_no: paymentSnapshot.id_card_no,
+      bank_name: paymentSnapshot.bank_name,
+      bank_card_no: paymentSnapshot.bank_card_no,
+      current_points: Number(order.current_month_amount_cent || 0) / 100,
+      carryover_points: Number(order.carryover_amount_cent || 0) / 100,
+      total_points: Number(order.amount_cent || 0) / 100,
+      amount_yuan: Number(order.amount_cent || 0) / 100,
+      source_months: order.source_months.join('、'),
+      review_count: order.review_count,
+      settlement_status: '已导出',
+      payment_result: '',
+      paid_at: '',
+      transaction_no: '',
+      failure_reason: ''
+    })
+  })
+  ;['doctor_phone', 'id_card_no', 'bank_card_no', 'settlement_no'].forEach((key) => {
+    statementSheet.getColumn(key).numFmt = '@'
+  })
+  ;['current_points', 'carryover_points', 'total_points', 'amount_yuan'].forEach(
+    (key) => {
+      statementSheet.getColumn(key).numFmt = '0.00'
+    }
+  )
+  styleSettlementWorksheet(statementSheet)
+
+  const detailWorkbook = new ExcelJS.Workbook()
+  detailWorkbook.creator = '希息药事后台'
+  detailWorkbook.created = new Date()
+  const detailSheet = detailWorkbook.addWorksheet(
+    isManualExport ? '人工结算明细' : '医生结算明细'
+  )
+  detailSheet.columns = [
+    { header: '导出批次号', key: 'export_no', width: 22 },
+    { header: '结算单号', key: 'settlement_no', width: 22 },
+    { header: '医生ID', key: 'doctor_id', width: 12 },
+    { header: '医生姓名', key: 'doctor_name', width: 14 },
+    { header: '手机号', key: 'doctor_phone', width: 16 },
+    { header: '来源月份', key: 'source_month', width: 12 },
+    { header: '基金会', key: 'foundation_name', width: 24 },
+    { header: '所属项目', key: 'project_name', width: 24 },
+    { header: '项目标识', key: 'identifier_name', width: 22 },
+    { header: '任务编号', key: 'task_no', width: 20 },
+    { header: '审核记录编号', key: 'review_no', width: 22 },
+    { header: '审核档位', key: 'final_level', width: 12 },
+    { header: '本条积分', key: 'points', width: 12 },
+    { header: '药品名称', key: 'drug_name', width: 22 },
+    { header: '药品规格', key: 'drug_specification', width: 22 },
+    { header: '问题类型', key: 'type_name', width: 18 },
+    { header: '审核问题', key: 'question', width: 42 },
+    { header: '问题对应答案', key: 'answer', width: 54 },
+    { header: '审核结论', key: 'review_result', width: 14 },
+    { header: '不通过类型', key: 'issue_type', width: 18 },
+    { header: '审核意见', key: 'review_comment', width: 36 },
+    { header: '审核完成时间', key: 'earned_at', width: 20 }
+  ]
+
+  orders.forEach((order) => {
+    const doctor = doctors.find((item) => item.id === order.doctor_id)
+    ledgerRowsForOrder(order.id).forEach((line) => {
+      const review = reviews.find((item) => item.id === line.review_id)
+      detailSheet.addRow({
+        export_no: exportNo,
+        settlement_no: order.settlement_no,
+        doctor_id: order.doctor_id,
+        doctor_name: doctor?.name || '',
+        doctor_phone: doctor?.phone || '',
+        source_month: line.source_month,
+        foundation_name: line.foundation_name,
+        project_name: line.project_name,
+        identifier_name: line.identifier_name,
+        task_no: line.task_no,
+        review_no: line.review_no,
+        final_level: line.final_level,
+        points: Number(line.amount_cent || 0) / 100,
+        drug_name: review?.drug_name || '',
+        drug_specification: review?.drug_specification || '',
+        type_name: review?.type_name || '',
+        question: review?.question || '',
+        answer: formatReviewAnswer(review?.answer),
+        review_result: review?.result === 'rejected' ? '修改' : '赞同',
+        issue_type: reviewIssueTypeLabels[review?.issue_type] || '',
+        review_comment: review?.review_comment || '',
+        earned_at: line.earned_at
+      })
+    })
+  })
+  ;['settlement_no', 'doctor_phone', 'review_no', 'task_no'].forEach((key) => {
+    detailSheet.getColumn(key).numFmt = '@'
+  })
+  detailSheet.getColumn('points').numFmt = '0.00'
+  styleSettlementWorksheet(detailSheet)
+
+  return {
+    statement_buffer: Buffer.from(await statementWorkbook.xlsx.writeBuffer()),
+    detail_buffer: Buffer.from(await detailWorkbook.xlsx.writeBuffer()),
+    payment_snapshots: new Map(
+      preparedOrders.map((item) => [item.order.id, item.paymentSnapshot])
+    )
+  }
+}
+
+function excelCellText(cell) {
+  if (!cell) return ''
+  if (cell.text !== undefined && cell.text !== null) return String(cell.text).trim()
+  const value = cell.value
+  if (value === undefined || value === null) return ''
+  if (typeof value === 'object' && value.result !== undefined) {
+    return String(value.result ?? '').trim()
+  }
+  return String(value).trim()
+}
+
+async function parseMonthlySettlementResultWorkbook(buffer) {
+  const workbook = new ExcelJS.Workbook()
+  await workbook.xlsx.load(buffer)
+  const worksheet = workbook.worksheets[0]
+  if (!worksheet || worksheet.rowCount < 2) return { error: '名单中没有可回写的结算记录' }
+
+  const headers = []
+  worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, columnNumber) => {
+    headers[columnNumber - 1] = excelCellText(cell)
+  })
+  const required = ['结算单号', '结算金额(元)', '到账结果']
+  const indexes = Object.fromEntries(
+    required.map((header) => [header, headers.indexOf(header)])
+  )
+  if (required.some((header) => indexes[header] < 0)) {
+    return { error: '模板字段不完整，必须包含结算单号、结算金额(元)和到账结果' }
+  }
+
+  const optionalIndexes = {
+    paid_at: headers.indexOf('到账时间'),
+    transaction_no: headers.indexOf('银行流水号'),
+    failure_reason: headers.indexOf('失败原因')
+  }
+  const rows = []
+  for (let rowNumber = 2; rowNumber <= worksheet.rowCount; rowNumber += 1) {
+    const row = worksheet.getRow(rowNumber)
+    const values = headers.map((_, index) => excelCellText(row.getCell(index + 1)))
+    if (values.every((value) => !value)) continue
+    rows.push({
+      row_no: rowNumber,
+      settlement_no: values[indexes['结算单号']],
+      amount_yuan: values[indexes['结算金额(元)']],
+      payment_result: values[indexes['到账结果']],
+      paid_at:
+        optionalIndexes.paid_at >= 0 ? values[optionalIndexes.paid_at] : '',
+      transaction_no:
+        optionalIndexes.transaction_no >= 0
+          ? values[optionalIndexes.transaction_no]
+          : '',
+      failure_reason:
+        optionalIndexes.failure_reason >= 0
+          ? values[optionalIndexes.failure_reason]
+          : ''
+    })
+  }
+  return { rows }
+}
+
+function validateMonthlySettlementResultRows(rows = [], cycleId) {
+  const counts = new Map()
+  rows.forEach((row) => {
+    if (!row.settlement_no) return
+    counts.set(row.settlement_no, (counts.get(row.settlement_no) || 0) + 1)
+  })
+
+  return rows.map((row) => {
+    const order = monthlySettlementOrders.find(
+      (item) => item.settlement_no === row.settlement_no
+    )
+    const amountCent = Math.round(Number(row.amount_yuan) * 100)
+    let validationStatus = 'eligible'
+    let validationMessage = '校验通过，可更新结算结果'
+
+    if (!row.settlement_no) {
+      validationStatus = 'invalid'
+      validationMessage = '结算单号不能为空'
+    } else if ((counts.get(row.settlement_no) || 0) > 1) {
+      validationStatus = 'invalid'
+      validationMessage = '结算单号在名单中重复'
+    } else if (!order) {
+      validationStatus = 'invalid'
+      validationMessage = '系统中不存在该结算单'
+    } else if (order.cycle_id !== Number(cycleId)) {
+      validationStatus = 'invalid'
+      validationMessage = '该结算单不属于当前账期'
+    } else if (order.status === 'paid') {
+      validationStatus = 'skipped'
+      validationMessage = '该结算单已经到账，无需重复回写'
+    } else if (!['exported', 'payment_failed'].includes(order.status)) {
+      validationStatus = 'invalid'
+      validationMessage = '只有已导出的结算单才能回写到账结果'
+    } else if (!Number.isFinite(amountCent) || amountCent !== order.amount_cent) {
+      validationStatus = 'invalid'
+      validationMessage = '到账金额与系统结算金额不一致'
+    } else if (!['已到账', '失败'].includes(row.payment_result)) {
+      validationStatus = 'invalid'
+      validationMessage = '到账结果必须填写“已到账”或“失败”'
+    } else if (
+      row.payment_result === '已到账' &&
+      (!row.paid_at || !row.transaction_no)
+    ) {
+      validationStatus = 'invalid'
+      validationMessage = '已到账记录必须填写到账时间和银行流水号'
+    } else if (
+      row.payment_result === '已到账' &&
+      !isValidDateTimeText(row.paid_at)
+    ) {
+      validationStatus = 'invalid'
+      validationMessage = '到账时间必须为有效的 YYYY-MM-DD HH:mm:ss'
+    } else if (
+      row.payment_result === '已到账' &&
+      row.transaction_no.length > 80
+    ) {
+      validationStatus = 'invalid'
+      validationMessage = '银行流水号不能超过 80 个字符'
+    } else if (row.payment_result === '失败' && !row.failure_reason) {
+      validationStatus = 'invalid'
+      validationMessage = '失败记录必须填写失败原因'
+    } else if (
+      row.payment_result === '失败' &&
+      row.failure_reason.length > 200
+    ) {
+      validationStatus = 'invalid'
+      validationMessage = '失败原因不能超过 200 个字符'
+    }
+
+    return {
+      ...row,
+      order_id: order?.id || null,
+      doctor_name: order
+        ? doctors.find((item) => item.id === order.doctor_id)?.name || ''
+        : '',
+      current_status: order?.status || '',
+      validation_status: validationStatus,
+      validation_message: validationMessage
+    }
+  })
+}
+
+function markMonthlySettlementOrderPaid(order, { paidAt, transactionNo, operator }) {
+  const settledAt = paidAt || formatDateTime()
+  order.status = 'paid'
+  order.paid_at = settledAt
+  order.transaction_no = transactionNo
+  order.payment_failed_reason = ''
+  ledgerRowsForOrder(order.id).forEach((item) => {
+    item.status = 'settled'
+    item.settled_at = settledAt
+  })
+  monthlySettlementAuditLogs.push({
+    id: monthlySettlementAuditLogs.length + 1,
+    action: 'payment_confirmed',
+    order_id: order.id,
+    operator: operator || '运营管理员',
+    remark: transactionNo ? `银行流水号：${transactionNo}` : '',
+    create_time: formatDateTime()
+  })
+}
+
+function markMonthlySettlementOrderFailed(order, { reason, operator }) {
+  order.status = 'payment_failed'
+  order.payment_failed_reason = reason
+  monthlySettlementAuditLogs.push({
+    id: monthlySettlementAuditLogs.length + 1,
+    action: 'payment_failed',
+    order_id: order.id,
+    operator: operator || '运营管理员',
+    remark: reason,
+    create_time: formatDateTime()
+  })
 }
 
 function taskDisplayTitle(task) {
@@ -1776,18 +3206,30 @@ function hydrateDoctor(doctor, includeTasks = false) {
     (total, task) => total + Number(task.completed_count || 0),
     0
   )
-  const accruedRewardCent = doctorTasks
-    .filter((task) => task.status === 'completed')
-    .reduce(
-      (total, task) => total + Number(task.total_reward_cent || 0),
-      0
+  const accruedRewardCent = pointLedger
+    .filter((item) => item.doctor_id === doctor.id)
+    .reduce((total, item) => total + Number(item.amount_cent || 0), 0)
+  const paymentAccount = getDoctorPaymentAccount(doctor.id)
+  const unsettledRewardCent = pointLedger
+    .filter(
+      (item) =>
+        item.doctor_id === doctor.id &&
+        item.status === 'unsettled' &&
+        !item.settlement_order_id
     )
+    .reduce((total, item) => total + Number(item.amount_cent || 0), 0)
   const result = {
     ...doctor,
     task_count: taskCount,
     assigned_item_count: assignedItemCount,
     completed_item_count: completedItemCount,
     accrued_reward_cent: accruedRewardCent,
+    unsettled_reward_cent: unsettledRewardCent,
+    payment_account_status: isPaymentAccountComplete(paymentAccount)
+      ? 'complete'
+      : paymentAccount
+        ? 'incomplete'
+        : 'missing',
     last_task_time: doctorTasks[0]?.create_time || null
   }
 
@@ -2990,6 +4432,10 @@ app.get('/core/product/doctor/index', (req, res) => {
     req.query.certification_status === 'all'
       ? ''
       : String(req.query.certification_status || '').trim()
+  const paymentAccountStatus =
+    req.query.payment_account_status === 'all'
+      ? ''
+      : String(req.query.payment_account_status || '').trim()
   if (accountStatus && !doctorAccountStatuses.includes(accountStatus)) {
     res.json(failure(422, '账号状态筛选值无效'))
     return
@@ -3002,6 +4448,13 @@ app.get('/core/product/doctor/index', (req, res) => {
     res.json(failure(422, '认证状态筛选值无效'))
     return
   }
+  if (
+    paymentAccountStatus &&
+    !paymentAccountStatuses.includes(paymentAccountStatus)
+  ) {
+    res.json(failure(422, '收款信息状态筛选值无效'))
+    return
+  }
 
   const filteredDoctors = doctors
     .map((doctor) => hydrateDoctor(doctor))
@@ -3010,6 +4463,12 @@ app.get('/core/product/doctor/index', (req, res) => {
       if (
         certificationStatus &&
         doctor.certification_status !== certificationStatus
+      ) {
+        return false
+      }
+      if (
+        paymentAccountStatus &&
+        doctor.payment_account_status !== paymentAccountStatus
       ) {
         return false
       }
@@ -3446,6 +4905,606 @@ app.get('/core/product/review/read', (req, res) => {
   }
 
   res.json(success(review))
+})
+
+app.get('/core/product/settlement/summary', (req, res) => {
+  res.json(success(buildMonthlySettlementSummary()))
+})
+
+app.get('/core/product/settlement/job/index', (req, res) => {
+  const month = normalizeSettlementMonth(req.query.month)
+  const rawMonth = String(req.query.month || '').trim()
+  const triggerType = String(req.query.trigger_type || '').trim()
+  const status = String(req.query.status || '').trim()
+  if (rawMonth && !month) {
+    res.json(failure(422, '账期格式必须为 YYYY-MM'))
+    return
+  }
+  if (triggerType && !['automatic', 'manual'].includes(triggerType)) {
+    res.json(failure(422, '任务触发方式无效'))
+    return
+  }
+  if (status && !['success', 'failed'].includes(status)) {
+    res.json(failure(422, '任务状态无效'))
+    return
+  }
+  const rows = monthlySettlementJobLogs.filter((item) => {
+    if (month && item.settlement_month !== month) return false
+    if (triggerType && item.trigger_type !== triggerType) return false
+    if (status && item.status !== status) return false
+    return true
+  })
+  res.json(success(paginate(rows, req.query)))
+})
+
+app.get('/core/product/settlement/history/index', (req, res) => {
+  const keyword = String(req.query.keyword || '').trim().toLowerCase()
+  const month = normalizeSettlementMonth(req.query.month)
+  const rawMonth = String(req.query.month || '').trim()
+  const status = req.query.status === 'all' ? '' : String(req.query.status || '').trim()
+  const recordType = String(req.query.record_type || '').trim()
+  const page = req.query.page === undefined ? 1 : Number(req.query.page)
+  const limit = req.query.limit === undefined ? 10 : Number(req.query.limit)
+
+  if (rawMonth && !month) {
+    res.json(failure(422, '账期格式必须为 YYYY-MM'))
+    return
+  }
+  if (status && !settlementHistoryStatuses.includes(status)) {
+    res.json(failure(422, '结算状态筛选值无效'))
+    return
+  }
+  if (recordType && !['monthly_cycle', 'manual_settlement'].includes(recordType)) {
+    res.json(failure(422, '记录类型筛选值无效'))
+    return
+  }
+  if (!Number.isInteger(page) || page <= 0 || !Number.isInteger(limit) || limit <= 0) {
+    res.json(failure(422, '分页参数必须为正整数'))
+    return
+  }
+
+  const rows = buildSettlementHistoryRows().filter((item) => {
+    if (month && item.settlement_month !== month) return false
+    if (status && item.status !== status) return false
+    if (recordType && item.record_type !== recordType) return false
+    if (!keyword) return true
+    return [
+      item.record_no,
+      item.display_title,
+      item.settlement_month,
+      item.doctor_name,
+      item.doctor_phone_masked,
+      item.result_message,
+      item.manual_reason
+    ].some((value) => String(value || '').toLowerCase().includes(keyword))
+  })
+
+  res.json(success(paginate(rows, { page, limit })))
+})
+
+app.get('/core/product/settlement/cycle/index', (req, res) => {
+  const keyword = String(req.query.keyword || '').trim().toLowerCase()
+  const month = normalizeSettlementMonth(req.query.month)
+  const rawMonth = String(req.query.month || '').trim()
+  const status = req.query.status === 'all' ? '' : String(req.query.status || '').trim()
+  const page = req.query.page === undefined ? 1 : Number(req.query.page)
+  const limit = req.query.limit === undefined ? 10 : Number(req.query.limit)
+
+  if (rawMonth && !month) {
+    res.json(failure(422, '账期格式必须为 YYYY-MM'))
+    return
+  }
+  if (status && !monthlySettlementCycleStatuses.includes(status)) {
+    res.json(failure(422, '月结状态筛选值无效'))
+    return
+  }
+  if (!Number.isInteger(page) || page <= 0 || !Number.isInteger(limit) || limit <= 0) {
+    res.json(failure(422, '分页参数必须为正整数'))
+    return
+  }
+
+  const rows = buildMonthlySettlementHistoryRows()
+    .filter((item) => {
+      if (month && item.settlement_month !== month) return false
+      if (status && item.status !== status) return false
+      if (!keyword) return true
+      return [item.cycle_no, item.display_title, item.settlement_month].some(
+        (value) => String(value || '').toLowerCase().includes(keyword)
+      )
+    })
+    .sort((left, right) =>
+      String(right.settlement_month).localeCompare(String(left.settlement_month))
+    )
+
+  res.json(success(paginate(rows, { page, limit })))
+})
+
+app.get('/core/product/settlement/cycle/read', (req, res) => {
+  const id = Number(req.query.id)
+  const cycleNo = String(req.query.cycle_no || '').trim()
+  const cycle = monthlySettlementCycles.find(
+    (item) =>
+      (Number.isInteger(id) && id > 0 && item.id === id) ||
+      (cycleNo && item.cycle_no === cycleNo)
+  )
+  if (!cycle) {
+    res.json(failure(404, '未找到对应月结账期'))
+    return
+  }
+  res.json(success(toPublicMonthlySettlementCycle(cycle, true)))
+})
+
+app.post('/core/product/settlement/cycle/run', (req, res) => {
+  const month = normalizeSettlementMonth(req.body?.month)
+  if (!month) {
+    res.json(failure(422, '请提供 YYYY-MM 格式的月结账期'))
+    return
+  }
+  const executedAt = formatDateTime()
+  const result = runMonthlySettlementCycle(month, executedAt)
+  if (result.error) {
+    res.json(failure(422, result.error))
+    return
+  }
+  const job = recordMonthlySettlementJob({
+    month,
+    executedAt,
+    triggerType: 'manual',
+    result
+  })
+  syncMonthlySettlementWorkbench()
+  if (!result.cycle) {
+    res.json(
+      success(
+        { created_count: 0, cycle: null, job },
+        '当前账期没有可结算积分，未生成月结记录'
+      )
+    )
+    return
+  }
+  res.json(
+    success(
+      {
+        created_count: result.created_count,
+        cycle: toPublicMonthlySettlementCycle(result.cycle, true),
+        job
+      },
+      result.created_count > 0
+        ? `已生成 ${result.created_count} 张医生结算单`
+        : '月结任务已执行，无需重复生成'
+    )
+  )
+})
+
+app.get('/core/product/settlement/order/read', (req, res) => {
+  const id = Number(req.query.id)
+  if (!Number.isInteger(id) || id <= 0) {
+    res.json(failure(422, '请提供有效的结算单 ID'))
+    return
+  }
+  const order = monthlySettlementOrders.find((item) => item.id === id)
+  if (!order) {
+    res.json(failure(404, '未找到对应医生结算单'))
+    return
+  }
+  res.json(success(toPublicMonthlySettlementOrder(order, true)))
+})
+
+app.get('/core/product/settlement/paymentAccount', (req, res) => {
+  const doctorId = Number(req.query.doctor_id)
+  const doctor = doctors.find((item) => item.id === doctorId)
+  if (!doctor) {
+    res.json(failure(404, '未找到对应医生'))
+    return
+  }
+  res.json(
+    success({
+      doctor_id: doctor.id,
+      doctor_name: doctor.name,
+      account: toPublicPaymentAccount(getDoctorPaymentAccount(doctor.id))
+    })
+  )
+})
+
+app.put('/core/product/settlement/paymentAccount', (req, res) => {
+  const doctorId = Number(req.body?.doctor_id)
+  const doctor = doctors.find((item) => item.id === doctorId)
+  const payeeName = String(req.body?.payee_name || '').trim()
+  const idCardNo = String(req.body?.id_card_no || '').trim()
+  const bankName = String(req.body?.bank_name || '').trim()
+  const bankCardNo = String(req.body?.bank_card_no || '').replaceAll(' ', '')
+  const confirmed = req.body?.confirmed === true
+
+  if (!doctor) {
+    res.json(failure(404, '未找到对应医生'))
+    return
+  }
+  if (!payeeName || payeeName.length > 50) {
+    res.json(failure(422, '请输入不超过 50 个字符的收款人姓名'))
+    return
+  }
+  if (!/^\d{17}[\dXx]$/.test(idCardNo)) {
+    res.json(failure(422, '请输入 18 位有效身份证号'))
+    return
+  }
+  if (!bankName || bankName.length > 100) {
+    res.json(failure(422, '请输入不超过 100 个字符的开户行'))
+    return
+  }
+  if (!/^\d{16,19}$/.test(bankCardNo)) {
+    res.json(failure(422, '请输入 16 至 19 位银行卡号'))
+    return
+  }
+  if (!confirmed) {
+    res.json(failure(422, '请确认已核对收款人、身份证号和银行卡信息'))
+    return
+  }
+
+  const now = formatDateTime()
+  const current = getDoctorPaymentAccount(doctor.id)
+  const account = current || {
+    id: doctor.id,
+    doctor_id: doctor.id
+  }
+  Object.assign(account, {
+    payee_name: payeeName,
+    id_card_no: idCardNo.toUpperCase(),
+    bank_name: bankName,
+    bank_card_no: bankCardNo,
+    status: 'complete',
+    source: 'admin',
+    confirmed_by: '运营管理员',
+    confirmed_at: now,
+    update_time: now
+  })
+  if (!current) doctorPaymentAccounts.push(account)
+
+  monthlySettlementOrders
+    .filter(
+      (item) => item.doctor_id === doctor.id && item.status === 'pending_export'
+    )
+    .forEach((item) => {
+      item.payment_snapshot = toPublicPaymentAccount(account, true)
+    })
+  syncMonthlySettlementWorkbench()
+  res.json(
+    success(
+      {
+        doctor_id: doctor.id,
+        doctor_name: doctor.name,
+        account: toPublicPaymentAccount(account)
+      },
+      '收款信息已补录并确认'
+    )
+  )
+})
+
+app.get('/core/product/settlement/manual/candidates', (req, res) => {
+  const page = req.query.page === undefined ? 1 : Number(req.query.page)
+  const limit = req.query.limit === undefined ? 20 : Number(req.query.limit)
+  if (!Number.isInteger(page) || page <= 0 || !Number.isInteger(limit) || limit <= 0) {
+    res.json(failure(422, '分页参数必须为正整数'))
+    return
+  }
+  const rows = buildManualSettlementCandidates(req.query.keyword)
+  res.json(success(paginate(rows, { page, limit })))
+})
+
+app.post('/core/product/settlement/order/manual', (req, res) => {
+  const result = createManualMonthlySettlement({
+    doctorId: req.body?.doctor_id,
+    reason: req.body?.reason,
+    operator: '运营管理员'
+  })
+  if (result.error) {
+    res.json(failure(422, result.error))
+    return
+  }
+  res.json(
+    success(
+      toPublicMonthlySettlementOrder(result.order, true),
+      '人工单独结算单已生成'
+    )
+  )
+})
+
+app.post('/core/product/settlement/export/create', async (req, res) => {
+  const rawCycleId = req.body?.cycle_id
+  const hasCycleId = ![undefined, null, ''].includes(rawCycleId)
+  const cycleId = Number(rawCycleId)
+  const orderIds = Array.isArray(req.body?.order_ids)
+    ? [...new Set(req.body.order_ids.map(Number))].filter(
+        (id) => Number.isInteger(id) && id > 0
+      )
+    : []
+  const cycle = hasCycleId
+    ? monthlySettlementCycles.find((item) => item.id === cycleId)
+    : null
+  if (hasCycleId && !cycle) {
+    res.json(failure(404, '未找到对应月结账期'))
+    return
+  }
+  if (orderIds.length === 0) {
+    res.json(failure(422, '请选择要导出的医生结算单'))
+    return
+  }
+  const orders = monthlySettlementOrders.filter(
+    (item) =>
+      orderIds.includes(item.id) &&
+      (cycle
+        ? item.cycle_id === cycle.id
+        : item.cycle_id === null && item.settlement_type === 'manual') &&
+      ['pending_export', 'payment_failed'].includes(item.status)
+  )
+  if (orders.length !== orderIds.length) {
+    res.json(failure(422, '所选结算单状态已变化，请刷新后重新选择'))
+    return
+  }
+
+  const now = formatDateTime()
+  const isManualExport = !cycle
+  const exportNo = `${isManualExport ? 'RGEX' : 'YJEX'}${now.slice(0, 10).replaceAll('-', '')}${String(
+    nextMonthlySettlementExportId
+  ).padStart(4, '0')}`
+  let files
+  try {
+    files = await buildMonthlySettlementExportFiles(orders, exportNo)
+  } catch {
+    res.json(failure(500, '结算文件生成失败，请稍后重试'))
+    return
+  }
+  if (files.error) {
+    res.json(failure(422, files.error))
+    return
+  }
+
+  nextMonthlySettlementExportId += 1
+  const settlementMonth = cycle?.settlement_month || orders[0].calculation_month
+  const statementName = `${isManualExport ? '人工结算单' : '月度结算单'}-${settlementMonth}-${exportNo}.xlsx`
+  const detailName = `${isManualExport ? '人工结算明细' : '医生结算明细'}-${settlementMonth}-${exportNo}.xlsx`
+  monthlySettlementExports.set(exportNo, {
+    export_no: exportNo,
+    cycle_id: cycle?.id || null,
+    order_ids: orders.map((item) => item.id),
+    statement_name: statementName,
+    detail_name: detailName,
+    statement_buffer: files.statement_buffer,
+    detail_buffer: files.detail_buffer,
+    created_at: now
+  })
+  orders.forEach((order) => {
+    order.status = 'exported'
+    order.exported_at = now
+    order.export_id = exportNo
+    order.payment_snapshot = files.payment_snapshots.get(order.id)
+    monthlySettlementAuditLogs.push({
+      id: monthlySettlementAuditLogs.length + 1,
+      action: 'exported',
+      order_id: order.id,
+      operator: '运营管理员',
+      remark: `导出批次：${exportNo}`,
+      create_time: now
+    })
+  })
+  syncMonthlySettlementWorkbench()
+  res.json(
+    success(
+      {
+        export_no: exportNo,
+        order_count: orders.length,
+        statement_name: statementName,
+        detail_name: detailName,
+        statement_url: `/core/product/settlement/export/download?export_no=${exportNo}&file=statement`,
+        detail_url: `/core/product/settlement/export/download?export_no=${exportNo}&file=detail`
+      },
+      `已生成 ${orders.length} 张结算单及对应医生明细`
+    )
+  )
+})
+
+app.get('/core/product/settlement/export/download', (req, res) => {
+  const exportNo = String(req.query.export_no || '').trim()
+  const fileType = String(req.query.file || '').trim()
+  const item = monthlySettlementExports.get(exportNo)
+  if (!item || !['statement', 'detail'].includes(fileType)) {
+    res.json(failure(404, '导出文件不存在或已失效'))
+    return
+  }
+  const name = fileType === 'statement' ? item.statement_name : item.detail_name
+  const buffer =
+    fileType === 'statement' ? item.statement_buffer : item.detail_buffer
+  res.setHeader('Cache-Control', 'no-store')
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+  )
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename*=UTF-8''${encodeURIComponent(name)}`
+  )
+  res.send(buffer)
+})
+
+app.post('/core/product/settlement/resultImportPreview', async (req, res) => {
+  const cycleId = Number(req.body?.cycle_id)
+  const fileName = String(req.body?.file_name || '').trim()
+  const fileSize = Number(req.body?.file_size)
+  const fileBase64 = String(req.body?.file_base64 || '').replace(
+    /^data:.*?;base64,/,
+    ''
+  )
+  const cycle = monthlySettlementCycles.find((item) => item.id === cycleId)
+  if (!cycle) {
+    res.json(failure(404, '未找到对应月结账期'))
+    return
+  }
+  if (!/\.xlsx$/i.test(fileName)) {
+    res.json(failure(422, '到账结果仅支持系统导出的 XLSX 月度结算单'))
+    return
+  }
+  if (!Number.isFinite(fileSize) || fileSize <= 0 || fileSize > 10 * 1024 * 1024) {
+    res.json(failure(422, '到账结果文件不能为空且不能超过 10 MB'))
+    return
+  }
+  let parsed
+  try {
+    const buffer = Buffer.from(fileBase64, 'base64')
+    if (!buffer.length || buffer.length > 10 * 1024 * 1024) {
+      res.json(failure(422, '无法读取到账结果文件，请重新选择'))
+      return
+    }
+    parsed = await parseMonthlySettlementResultWorkbook(buffer)
+  } catch {
+    res.json(failure(422, 'XLSX 文件无法解析，请使用系统导出的原结算单'))
+    return
+  }
+  if (parsed.error) {
+    res.json(failure(422, parsed.error))
+    return
+  }
+  const rows = validateMonthlySettlementResultRows(parsed.rows, cycle.id)
+  if (rows.length === 0) {
+    res.json(failure(422, '名单中没有可回写的结算记录'))
+    return
+  }
+  const previewId = `YJIP${Date.now()}${String(
+    Math.floor(Math.random() * 1000)
+  ).padStart(3, '0')}`
+  const eligibleRows = rows.filter((item) => item.validation_status === 'eligible')
+  const summary = {
+    total_rows: rows.length,
+    eligible_rows: eligibleRows.length,
+    paid_rows: eligibleRows.filter((item) => item.payment_result === '已到账').length,
+    failed_rows: eligibleRows.filter((item) => item.payment_result === '失败').length,
+    skipped_rows: rows.length - eligibleRows.length
+  }
+  monthlySettlementImportPreviews.set(previewId, {
+    cycle_id: cycle.id,
+    file_name: fileName,
+    rows,
+    summary
+  })
+  res.json(
+    success({
+      preview_id: previewId,
+      file_name: fileName,
+      rows,
+      summary
+    })
+  )
+})
+
+app.post('/core/product/settlement/resultImportConfirm', (req, res) => {
+  const previewId = String(req.body?.preview_id || '').trim()
+  const preview = monthlySettlementImportPreviews.get(previewId)
+  if (!preview) {
+    res.json(failure(404, '导入预览不存在或已完成，请重新上传'))
+    return
+  }
+  let paidCount = 0
+  let failedCount = 0
+  let changedStateSkippedCount = 0
+  preview.rows
+    .filter((item) => item.validation_status === 'eligible')
+    .forEach((row) => {
+      const order = monthlySettlementOrders.find((item) => item.id === row.order_id)
+      if (
+        !order ||
+        order.cycle_id !== preview.cycle_id ||
+        !['exported', 'payment_failed'].includes(order.status)
+      ) {
+        changedStateSkippedCount += 1
+        return
+      }
+      if (row.payment_result === '已到账') {
+        markMonthlySettlementOrderPaid(order, {
+          paidAt: row.paid_at,
+          transactionNo: row.transaction_no,
+          operator: '运营管理员（批量导入）'
+        })
+        paidCount += 1
+      } else {
+        markMonthlySettlementOrderFailed(order, {
+          reason: row.failure_reason,
+          operator: '运营管理员（批量导入）'
+        })
+        failedCount += 1
+      }
+    })
+  monthlySettlementImportPreviews.delete(previewId)
+  if (paidCount === 0 && failedCount === 0) {
+    res.json(failure(422, '可更新记录的状态已变化，请重新校验名单'))
+    return
+  }
+  syncMonthlySettlementWorkbench()
+  const skippedCount = preview.summary.skipped_rows + changedStateSkippedCount
+  res.json(
+    success(
+      { paid_count: paidCount, failed_count: failedCount, skipped_count: skippedCount },
+      `已确认到账 ${paidCount} 笔，记录失败 ${failedCount} 笔，跳过 ${skippedCount} 笔`
+    )
+  )
+})
+
+app.post('/core/product/settlement/order/markPaid', (req, res) => {
+  const id = Number(req.body?.id)
+  const amountCent = Number(req.body?.amount_cent)
+  const paidAt = String(req.body?.paid_at || '').trim()
+  const transactionNo = String(req.body?.transaction_no || '').trim()
+  const order = monthlySettlementOrders.find((item) => item.id === id)
+  if (!order) {
+    res.json(failure(404, '未找到对应医生结算单'))
+    return
+  }
+  if (!['exported', 'payment_failed'].includes(order.status)) {
+    res.json(failure(409, '只有已导出或打款失败的结算单可以补录到账'))
+    return
+  }
+  if (!Number.isInteger(amountCent) || amountCent !== order.amount_cent) {
+    res.json(failure(422, '到账金额必须与结算单金额完全一致'))
+    return
+  }
+  if (!isValidDateTimeText(paidAt)) {
+    res.json(failure(422, '请填写有效的 YYYY-MM-DD HH:mm:ss 到账时间'))
+    return
+  }
+  if (!transactionNo || transactionNo.length > 80) {
+    res.json(failure(422, '请填写不超过 80 个字符的银行流水号'))
+    return
+  }
+  markMonthlySettlementOrderPaid(order, {
+    paidAt,
+    transactionNo,
+    operator: '运营管理员（单笔补录）'
+  })
+  syncMonthlySettlementWorkbench()
+  res.json(
+    success(toPublicMonthlySettlementOrder(order, true), '结算单已更新为已到账')
+  )
+})
+
+app.get('/core/product/settlement/doctor/overview', (req, res) => {
+  const data = buildDoctorSettlementOverview(req.query.doctor_id)
+  if (!data) {
+    res.json(failure(404, '未找到对应医生'))
+    return
+  }
+  res.json(success(data))
+})
+
+app.get('/core/product/settlement/doctor/records', (req, res) => {
+  const doctorId = Number(req.query.doctor_id)
+  if (!doctors.some((item) => item.id === doctorId)) {
+    res.json(failure(404, '未找到对应医生'))
+    return
+  }
+  const rows = monthlySettlementOrders
+    .filter((item) => item.doctor_id === doctorId)
+    .sort((left, right) =>
+      String(right.generated_at).localeCompare(String(left.generated_at))
+    )
+    .map((item) => toPublicMonthlySettlementOrder(item))
+  res.json(success(paginate(rows, req.query)))
 })
 
 app.get('/core/product/withdrawal/summary', (req, res) => {

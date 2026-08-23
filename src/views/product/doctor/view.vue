@@ -34,7 +34,7 @@
         </a-alert>
 
         <section class="detail-section">
-          <h3>项目概况</h3>
+          <h3>项目与积分概况</h3>
           <a-row :gutter="[12, 12]">
             <a-col :xs="12" :sm="6">
               <div class="metric-card">
@@ -44,13 +44,7 @@
             </a-col>
             <a-col :xs="12" :sm="6">
               <div class="metric-card">
-                <span>分配数量</span>
-                <strong>{{ formatNumber(detail.assigned_item_count) }}</strong>
-              </div>
-            </a-col>
-            <a-col :xs="12" :sm="6">
-              <div class="metric-card">
-                <span>已完成</span>
+                <span>已完成审核</span>
                 <strong>{{ formatNumber(detail.completed_item_count) }}</strong>
               </div>
             </a-col>
@@ -58,6 +52,12 @@
               <div class="metric-card">
                 <span>累计积分</span>
                 <strong>{{ formatPoints(detail.accrued_reward_cent) }}</strong>
+              </div>
+            </a-col>
+            <a-col :xs="12" :sm="6">
+              <div class="metric-card">
+                <span>待结积分</span>
+                <strong>{{ formatPoints(detail.unsettled_reward_cent) }}</strong>
               </div>
             </a-col>
           </a-row>
@@ -142,6 +142,13 @@
               <sa-dict
                 :value="detail.certification_status"
                 dict="doctor_certification_status"
+                render="span"
+              />
+            </a-descriptions-item>
+            <a-descriptions-item label="收款信息">
+              <sa-dict
+                :value="detail.payment_account_status"
+                dict="payment_account_status"
                 render="span"
               />
             </a-descriptions-item>

@@ -20,7 +20,7 @@ const routes = [
         path: '/product/withdrawal/batch/:batchNo',
         component: () => import('@/views/product/withdrawal/batch.vue'),
         hidden: true,
-        meta: { title: '结算项目详情', hidden: true, type: 'M' }
+        meta: { title: '月结账期详情', hidden: true, type: 'M' }
       }
     ]
   },
