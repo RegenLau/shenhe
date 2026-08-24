@@ -1562,6 +1562,7 @@ function buildDoctorPaymentAccounts(doctorRows = [], withdrawalRows = []) {
         payee_name: source.doctor_name || doctor.name,
         id_card_no: source.id_card_no || '',
         bank_name: source.bank_name || '',
+        bank_location: source.bank_location || '',
         bank_card_no: source.bank_card_no || '',
         status: 'complete',
         source: 'legacy',
@@ -1586,6 +1587,7 @@ function isPaymentAccountComplete(account) {
       account.payee_name &&
       /^\d{17}[\dXx]$/.test(account.id_card_no) &&
       account.bank_name &&
+      account.bank_location &&
       /^\d{16,19}$/.test(account.bank_card_no)
   )
 }
@@ -1597,6 +1599,7 @@ function toPublicPaymentAccount(account, includeSensitive = false) {
       payee_name: '',
       id_card_masked: '',
       bank_name: '',
+      bank_location: '',
       bank_card_masked: '',
       source: '',
       update_time: null
@@ -1610,6 +1613,7 @@ function toPublicPaymentAccount(account, includeSensitive = false) {
     payee_name: account.payee_name,
     id_card_masked: maskIdCard(account.id_card_no),
     bank_name: account.bank_name,
+    bank_location: account.bank_location,
     bank_card_masked: maskBankCard(account.bank_card_no),
     source: account.source,
     confirmed_by: account.confirmed_by,
@@ -1961,6 +1965,7 @@ function toPublicMonthlySettlementOrder(order, includeLines = false) {
             paymentSnapshot.id_card_masked ||
             maskIdCard(paymentSnapshot.id_card_no),
           bank_name: paymentSnapshot.bank_name,
+          bank_location: paymentSnapshot.bank_location || '',
           bank_card_masked:
             paymentSnapshot.bank_card_masked ||
             maskBankCard(paymentSnapshot.bank_card_no)
@@ -2549,7 +2554,13 @@ function fullPaymentSnapshotForOrder(order) {
   return toPublicPaymentAccount(account, true)
 }
 
-async function buildMonthlySettlementExportFiles(orders = [], exportNo = '') {
+function settlementExportMonthLabel(month) {
+  const match = /^(\d{4})-(\d{2})$/.exec(String(month || '').trim())
+  if (!match) return String(month || '').trim()
+  return `${match[1]} 年 ${Number(match[2])} 月`
+}
+
+async function buildMonthlySettlementExportFiles(orders = []) {
   const isManualExport =
     orders.length > 0 && orders.every((item) => item.settlement_type === 'manual')
   const preparedOrders = orders.map((order) => ({
@@ -2565,36 +2576,33 @@ async function buildMonthlySettlementExportFiles(orders = [], exportNo = '') {
   const statementWorkbook = new ExcelJS.Workbook()
   statementWorkbook.creator = '希息药事后台'
   statementWorkbook.created = new Date()
-  const statementSheet = statementWorkbook.addWorksheet(
-    isManualExport ? '人工结算单' : '月度结算单'
-  )
+  const statementSheet = statementWorkbook.addWorksheet('待结算名单')
   statementSheet.columns = [
-    { header: '导出批次号', key: 'export_no', width: 22 },
+    { header: '基金会', key: 'foundation_name', width: 24 },
+    { header: '所属项目', key: 'project_name', width: 24 },
+    { header: '项目标识', key: 'identifier_name', width: 22 },
     { header: '结算单号', key: 'settlement_no', width: 22 },
     { header: '账期', key: 'settlement_month', width: 12 },
     { header: '结算类型', key: 'settlement_type', width: 14 },
-    { header: '医生姓名', key: 'doctor_name', width: 14 },
+    { header: '姓名', key: 'doctor_name', width: 14 },
     { header: '手机号', key: 'doctor_phone', width: 16 },
     { header: '身份证号', key: 'id_card_no', width: 22 },
     { header: '开户行', key: 'bank_name', width: 24 },
+    { header: '开户地', key: 'bank_location', width: 20 },
     { header: '银行卡号', key: 'bank_card_no', width: 24 },
-    { header: '本期积分', key: 'current_points', width: 14 },
-    { header: '递延积分', key: 'carryover_points', width: 14 },
-    { header: '结算总积分', key: 'total_points', width: 16 },
-    { header: '结算金额(元)', key: 'amount_yuan', width: 16 },
-    { header: '来源月份', key: 'source_months', width: 20 },
-    { header: '审核条数', key: 'review_count', width: 12 },
+    { header: '总金额(不含税元)', key: 'amount_yuan', width: 18 },
     { header: '结算状态', key: 'settlement_status', width: 14 },
-    { header: '到账结果', key: 'payment_result', width: 14 },
-    { header: '到账时间', key: 'paid_at', width: 20 },
-    { header: '银行流水号', key: 'transaction_no', width: 24 },
-    { header: '失败原因', key: 'failure_reason', width: 28 }
+    { header: '申请时间', key: 'application_time', width: 20 },
+    { header: '附件', key: 'attachment', width: 36 }
   ]
 
   preparedOrders.forEach(({ order, paymentSnapshot }) => {
     const doctor = doctors.find((item) => item.id === order.doctor_id)
+    const ownership = ledgerRowsForOrder(order.id)[0] || {}
     statementSheet.addRow({
-      export_no: exportNo,
+      foundation_name: ownership.foundation_name || '',
+      project_name: ownership.project_name || '',
+      identifier_name: ownership.identifier_name || '',
       settlement_no: order.settlement_no,
       settlement_month:
         monthlySettlementCycles.find((item) => item.id === order.cycle_id)
@@ -2607,28 +2615,18 @@ async function buildMonthlySettlementExportFiles(orders = [], exportNo = '') {
       doctor_phone: doctor?.phone || '',
       id_card_no: paymentSnapshot.id_card_no,
       bank_name: paymentSnapshot.bank_name,
+      bank_location: paymentSnapshot.bank_location,
       bank_card_no: paymentSnapshot.bank_card_no,
-      current_points: Number(order.current_month_amount_cent || 0) / 100,
-      carryover_points: Number(order.carryover_amount_cent || 0) / 100,
-      total_points: Number(order.amount_cent || 0) / 100,
       amount_yuan: Number(order.amount_cent || 0) / 100,
-      source_months: order.source_months.join('、'),
-      review_count: order.review_count,
-      settlement_status: '已导出',
-      payment_result: '',
-      paid_at: '',
-      transaction_no: '',
-      failure_reason: ''
+      settlement_status: '待结算',
+      application_time: order.generated_at || '',
+      attachment: '该医师/药师本月审核全部内容'
     })
   })
   ;['doctor_phone', 'id_card_no', 'bank_card_no', 'settlement_no'].forEach((key) => {
     statementSheet.getColumn(key).numFmt = '@'
   })
-  ;['current_points', 'carryover_points', 'total_points', 'amount_yuan'].forEach(
-    (key) => {
-      statementSheet.getColumn(key).numFmt = '0.00'
-    }
-  )
+  statementSheet.getColumn('amount_yuan').numFmt = '0.00'
   styleSettlementWorksheet(statementSheet)
 
   const detailWorkbook = new ExcelJS.Workbook()
@@ -2638,26 +2636,18 @@ async function buildMonthlySettlementExportFiles(orders = [], exportNo = '') {
     isManualExport ? '人工结算明细' : '医生结算明细'
   )
   detailSheet.columns = [
-    { header: '导出批次号', key: 'export_no', width: 22 },
     { header: '结算单号', key: 'settlement_no', width: 22 },
-    { header: '医生ID', key: 'doctor_id', width: 12 },
     { header: '医生姓名', key: 'doctor_name', width: 14 },
     { header: '手机号', key: 'doctor_phone', width: 16 },
     { header: '来源月份', key: 'source_month', width: 12 },
     { header: '基金会', key: 'foundation_name', width: 24 },
     { header: '所属项目', key: 'project_name', width: 24 },
     { header: '项目标识', key: 'identifier_name', width: 22 },
-    { header: '任务编号', key: 'task_no', width: 20 },
-    { header: '审核记录编号', key: 'review_no', width: 22 },
-    { header: '审核档位', key: 'final_level', width: 12 },
-    { header: '本条积分', key: 'points', width: 12 },
     { header: '药品名称', key: 'drug_name', width: 22 },
     { header: '药品规格', key: 'drug_specification', width: 22 },
     { header: '问题类型', key: 'type_name', width: 18 },
     { header: '审核问题', key: 'question', width: 42 },
     { header: '问题对应答案', key: 'answer', width: 54 },
-    { header: '审核结论', key: 'review_result', width: 14 },
-    { header: '不通过类型', key: 'issue_type', width: 18 },
     { header: '审核意见', key: 'review_comment', width: 36 },
     { header: '审核完成时间', key: 'earned_at', width: 20 }
   ]
@@ -2667,35 +2657,26 @@ async function buildMonthlySettlementExportFiles(orders = [], exportNo = '') {
     ledgerRowsForOrder(order.id).forEach((line) => {
       const review = reviews.find((item) => item.id === line.review_id)
       detailSheet.addRow({
-        export_no: exportNo,
         settlement_no: order.settlement_no,
-        doctor_id: order.doctor_id,
         doctor_name: doctor?.name || '',
         doctor_phone: doctor?.phone || '',
         source_month: line.source_month,
         foundation_name: line.foundation_name,
         project_name: line.project_name,
         identifier_name: line.identifier_name,
-        task_no: line.task_no,
-        review_no: line.review_no,
-        final_level: line.final_level,
-        points: Number(line.amount_cent || 0) / 100,
         drug_name: review?.drug_name || '',
         drug_specification: review?.drug_specification || '',
         type_name: review?.type_name || '',
         question: review?.question || '',
         answer: formatReviewAnswer(review?.answer),
-        review_result: review?.result === 'rejected' ? '修改' : '赞同',
-        issue_type: reviewIssueTypeLabels[review?.issue_type] || '',
         review_comment: review?.review_comment || '',
         earned_at: line.earned_at
       })
     })
   })
-  ;['settlement_no', 'doctor_phone', 'review_no', 'task_no'].forEach((key) => {
+  ;['settlement_no', 'doctor_phone'].forEach((key) => {
     detailSheet.getColumn(key).numFmt = '@'
   })
-  detailSheet.getColumn('points').numFmt = '0.00'
   styleSettlementWorksheet(detailSheet)
 
   return {
@@ -2728,12 +2709,17 @@ async function parseMonthlySettlementResultWorkbook(buffer) {
   worksheet.getRow(1).eachCell({ includeEmpty: true }, (cell, columnNumber) => {
     headers[columnNumber - 1] = excelCellText(cell)
   })
-  const required = ['结算单号', '结算金额(元)', '到账结果']
+  const amountHeader = [
+    '总金额(不含税元)',
+    '金额(不含税元)',
+    '结算金额(元)'
+  ].find((header) => headers.includes(header))
+  const required = ['结算单号', '到账结果']
   const indexes = Object.fromEntries(
-    required.map((header) => [header, headers.indexOf(header)])
+    [...required, amountHeader].map((header) => [header, headers.indexOf(header)])
   )
-  if (required.some((header) => indexes[header] < 0)) {
-    return { error: '模板字段不完整，必须包含结算单号、结算金额(元)和到账结果' }
+  if (!amountHeader || required.some((header) => indexes[header] < 0)) {
+    return { error: '模板字段不完整，必须包含结算单号、总金额(不含税元)和到账结果' }
   }
 
   const optionalIndexes = {
@@ -2749,7 +2735,7 @@ async function parseMonthlySettlementResultWorkbook(buffer) {
     rows.push({
       row_no: rowNumber,
       settlement_no: values[indexes['结算单号']],
-      amount_yuan: values[indexes['结算金额(元)']],
+      amount_yuan: values[indexes[amountHeader]],
       payment_result: values[indexes['到账结果']],
       paid_at:
         optionalIndexes.paid_at >= 0 ? values[optionalIndexes.paid_at] : '',
@@ -5179,7 +5165,7 @@ app.post('/core/product/settlement/export/create', async (req, res) => {
   ).padStart(4, '0')}`
   let files
   try {
-    files = await buildMonthlySettlementExportFiles(orders, exportNo)
+    files = await buildMonthlySettlementExportFiles(orders)
   } catch {
     res.json(failure(500, '结算文件生成失败，请稍后重试'))
     return
@@ -5191,8 +5177,10 @@ app.post('/core/product/settlement/export/create', async (req, res) => {
 
   nextMonthlySettlementExportId += 1
   const settlementMonth = cycle?.settlement_month || orders[0].calculation_month
-  const statementName = `${isManualExport ? '人工结算单' : '月度结算单'}-${settlementMonth}-${exportNo}.xlsx`
-  const detailName = `${isManualExport ? '人工结算明细' : '医生结算明细'}-${settlementMonth}-${exportNo}.xlsx`
+  const settlementMonthLabel = settlementExportMonthLabel(settlementMonth)
+  const tableDate = now.slice(0, 10).replaceAll('-', '')
+  const statementName = `希息药事${settlementMonthLabel}待结算名单_${tableDate}.xlsx`
+  const detailName = `希息药事${settlementMonthLabel}结算明细_${tableDate}.xlsx`
   monthlySettlementExports.set(exportNo, {
     export_no: exportNo,
     cycle_id: cycle?.id || null,
@@ -5231,8 +5219,8 @@ app.post('/core/product/settlement/export/create', async (req, res) => {
         detail_url: `/core/product/settlement/export/download?export_no=${exportNo}&file=detail`
       },
       isManualExport
-        ? '已生成 1 份人工结算单和 1 份结算明细'
-        : `已生成 1 份月度结算单和 1 份合并结算明细，共 ${doctorCount} 位医生`
+        ? '已生成 1 份待结算名单和 1 份结算明细'
+        : `已生成 1 份待结算名单和 1 份合并结算明细，共 ${doctorCount} 位医生`
     )
   )
 })
@@ -5274,7 +5262,7 @@ app.post('/core/product/settlement/resultImportPreview', async (req, res) => {
     return
   }
   if (!/\.xlsx$/i.test(fileName)) {
-    res.json(failure(422, '到账结果仅支持系统导出的 XLSX 月度结算单'))
+    res.json(failure(422, '到账结果仅支持基于系统待结算名单整理的 XLSX 文件'))
     return
   }
   if (!Number.isFinite(fileSize) || fileSize <= 0 || fileSize > 10 * 1024 * 1024) {
@@ -5290,7 +5278,7 @@ app.post('/core/product/settlement/resultImportPreview', async (req, res) => {
     }
     parsed = await parseMonthlySettlementResultWorkbook(buffer)
   } catch {
-    res.json(failure(422, 'XLSX 文件无法解析，请使用系统导出的原结算单'))
+    res.json(failure(422, 'XLSX 文件无法解析，请使用系统导出的待结算名单'))
     return
   }
   if (parsed.error) {

@@ -9,7 +9,7 @@
   >
     <a-spin :loading="loading" class="form-loading">
       <a-alert type="warning" show-icon class="account-alert">
-        收款信息将用于生成月度结算单。请与医生确认后完整录入；为避免敏感信息泄露，系统不回显完整身份证号和银行卡号。
+        收款信息将用于生成待结算名单。请与医生确认后完整录入；为避免敏感信息泄露，系统不回显完整身份证号和银行卡号。
       </a-alert>
 
       <a-descriptions v-if="doctorName" :column="1" bordered class="doctor-summary">

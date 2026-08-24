@@ -201,8 +201,14 @@ test('月结全链路：零积分跳过、人工特批、双表导出与到账�
     body: JSON.stringify({ order_ids: [manual.data.id] })
   })
   assert.equal(manualExport.code, 200)
-  assert.match(manualExport.data.statement_name, /^人工结算单-/)
-  assert.match(manualExport.data.detail_name, /^人工结算明细-/)
+  assert.match(
+    manualExport.data.statement_name,
+    /^希息药事\d{4} 年 \d{1,2} 月待结算名单_\d{8}\.xlsx$/
+  )
+  assert.match(
+    manualExport.data.detail_name,
+    /^希息药事\d{4} 年 \d{1,2} 月结算明细_\d{8}\.xlsx$/
+  )
   const manualStatementResponse = await fetch(
     `${baseUrl}${manualExport.data.statement_url}`,
     { headers: { Authorization: `Bearer ${token}` } }
@@ -211,7 +217,7 @@ test('月结全链路：零积分跳过、人工特批、双表导出与到账�
   await manualStatementWorkbook.xlsx.load(
     Buffer.from(await manualStatementResponse.arrayBuffer())
   )
-  assert.equal(manualStatementWorkbook.worksheets[0].name, '人工结算单')
+  assert.equal(manualStatementWorkbook.worksheets[0].name, '待结算名单')
   const summaryAfterManualExport = await api('/core/product/settlement/summary')
   assert.equal(
     summaryAfterManualExport.data.processing_count,
@@ -242,7 +248,15 @@ test('月结全链路：零积分跳过、人工特批、双表导出与到账�
   assert.equal(exportResponse.data.file_count, 2)
   assert.equal(exportResponse.data.doctor_count, pendingDoctorCount)
   assert.equal(exportResponse.data.order_count, pendingOrders.length)
-  assert.match(exportResponse.message, /1 份月度结算单和 1 份合并结算明细/)
+  assert.match(exportResponse.message, /1 份待结算名单和 1 份合并结算明细/)
+  assert.match(
+    exportResponse.data.statement_name,
+    /^希息药事2026 年 7 月待结算名单_\d{8}\.xlsx$/
+  )
+  assert.match(
+    exportResponse.data.detail_name,
+    /^希息药事2026 年 7 月结算明细_\d{8}\.xlsx$/
+  )
 
   const statementResponse = await fetch(
     `${baseUrl}${exportResponse.data.statement_url}`,
@@ -259,12 +273,62 @@ test('月结全链路：零积分跳过、人工特批、双表导出与到账�
   const statementWorkbook = new ExcelJS.Workbook()
   await statementWorkbook.xlsx.load(statementBuffer)
   const statementSheet = statementWorkbook.worksheets[0]
-  assert.equal(statementSheet.name, '月度结算单')
+  assert.equal(statementSheet.name, '待结算名单')
   assert.equal(statementSheet.rowCount, pendingOrders.length + 1)
+  const headers = []
+  statementSheet.getRow(1).eachCell({ includeEmpty: true }, (cell, column) => {
+    headers[column - 1] = cell.text
+  })
+  assert.deepEqual(headers, [
+    '基金会',
+    '所属项目',
+    '项目标识',
+    '结算单号',
+    '账期',
+    '结算类型',
+    '姓名',
+    '手机号',
+    '身份证号',
+    '开户行',
+    '开户地',
+    '银行卡号',
+    '总金额(不含税元)',
+    '结算状态',
+    '申请时间',
+    '附件'
+  ])
   const exportedStatementNos = new Set()
   for (let rowNumber = 2; rowNumber <= statementSheet.rowCount; rowNumber += 1) {
-    exportedStatementNos.add(statementSheet.getRow(rowNumber).getCell(2).text)
-    assert.ok(Number(statementSheet.getRow(rowNumber).getCell(12).value) > 0)
+    exportedStatementNos.add(
+      statementSheet.getRow(rowNumber).getCell(headers.indexOf('结算单号') + 1).text
+    )
+    assert.ok(
+      statementSheet.getRow(rowNumber).getCell(headers.indexOf('基金会') + 1).text
+    )
+    assert.ok(
+      statementSheet.getRow(rowNumber).getCell(headers.indexOf('所属项目') + 1).text
+    )
+    assert.ok(
+      statementSheet.getRow(rowNumber).getCell(headers.indexOf('项目标识') + 1).text
+    )
+    assert.ok(
+      statementSheet.getRow(rowNumber).getCell(headers.indexOf('开户地') + 1).text
+    )
+    assert.ok(
+      Number(
+        statementSheet
+          .getRow(rowNumber)
+          .getCell(headers.indexOf('总金额(不含税元)') + 1).value
+      ) > 0
+    )
+    assert.equal(
+      statementSheet.getRow(rowNumber).getCell(headers.indexOf('结算状态') + 1).text,
+      '待结算'
+    )
+    assert.equal(
+      statementSheet.getRow(rowNumber).getCell(headers.indexOf('附件') + 1).text,
+      '该医师/药师本月审核全部内容'
+    )
   }
   assert.deepEqual(exportedStatementNos, pendingOrderNos)
 
@@ -273,31 +337,51 @@ test('月结全链路：零积分跳过、人工特批、双表导出与到账�
   const detailSheet = detailWorkbook.worksheets[0]
   assert.equal(detailSheet.name, '医生结算明细')
   assert.ok(detailSheet.rowCount > 1)
+  const detailHeaders = []
+  detailSheet.getRow(1).eachCell({ includeEmpty: true }, (cell, column) => {
+    detailHeaders[column - 1] = cell.text
+  })
+  assert.deepEqual(detailHeaders, [
+    '结算单号',
+    '医生姓名',
+    '手机号',
+    '来源月份',
+    '基金会',
+    '所属项目',
+    '项目标识',
+    '药品名称',
+    '药品规格',
+    '问题类型',
+    '审核问题',
+    '问题对应答案',
+    '审核意见',
+    '审核完成时间'
+  ])
   const exportedDetailNos = new Set()
   for (let rowNumber = 2; rowNumber <= detailSheet.rowCount; rowNumber += 1) {
-    const settlementNo = detailSheet.getRow(rowNumber).getCell(2).text
+    const settlementNo = detailSheet.getRow(rowNumber).getCell(1).text
     assert.ok(pendingOrderNos.has(settlementNo))
     exportedDetailNos.add(settlementNo)
-    assert.ok(Number(detailSheet.getRow(rowNumber).getCell(13).value) > 0)
+    assert.ok(detailSheet.getRow(rowNumber).getCell(8).text)
   }
   assert.deepEqual(exportedDetailNos, pendingOrderNos)
 
-  const headers = []
-  statementSheet.getRow(1).eachCell({ includeEmpty: true }, (cell, column) => {
-    headers[column - 1] = cell.text
-  })
   const paidRowNumber = pendingOrders.findIndex(
     (order) => order.id === pendingOrder.id
   ) + 2
-  statementSheet.getRow(paidRowNumber).getCell(headers.indexOf('到账结果') + 1).value = '已到账'
-  statementSheet.getRow(paidRowNumber).getCell(headers.indexOf('到账时间') + 1).value = '2026-08-23 12:00:00'
-  statementSheet.getRow(paidRowNumber).getCell(headers.indexOf('银行流水号') + 1).value = 'BANK-TEST-0001'
+  const importColumns = ['到账结果', '到账时间', '银行流水号', '失败原因']
+  importColumns.forEach((header, index) => {
+    statementSheet.getRow(1).getCell(headers.length + index + 1).value = header
+  })
+  statementSheet.getRow(paidRowNumber).getCell(headers.length + 1).value = '已到账'
+  statementSheet.getRow(paidRowNumber).getCell(headers.length + 2).value = '2026-08-23 12:00:00'
+  statementSheet.getRow(paidRowNumber).getCell(headers.length + 3).value = 'BANK-TEST-0001'
   const resultBuffer = Buffer.from(await statementWorkbook.xlsx.writeBuffer())
   const preview = await api('/core/product/settlement/resultImportPreview', {
     method: 'POST',
     body: JSON.stringify({
       cycle_id: initialCycle.id,
-      file_name: '月度结算单-到账结果.xlsx',
+      file_name: '待结算名单-到账结果.xlsx',
       file_size: resultBuffer.length,
       file_base64: resultBuffer.toString('base64')
     })

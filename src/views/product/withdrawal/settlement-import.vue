@@ -9,14 +9,14 @@
     @cancel="reset"
   >
     <a-steps :current="currentStep" size="small" class="import-steps">
-      <a-step>上传结算单</a-step>
+      <a-step>上传待结算名单</a-step>
       <a-step>校验预览</a-step>
       <a-step>回写完成</a-step>
     </a-steps>
 
     <section v-if="currentStep === 1" class="step-content">
       <a-alert type="info" show-icon>
-        请使用系统导出的“月度结算单” XLSX，填写“到账结果”、“到账时间”、“银行流水号”或“失败原因”后上传。系统会按结算单号和金额双重校验。
+        请基于系统导出的“待结算名单” XLSX 补充“到账结果”、“到账时间”、“银行流水号”或“失败原因”列后上传。系统会按结算单号和金额双重校验。
       </a-alert>
       <a-alert type="warning" show-icon>
         文件包含身份证号和银行卡号等敏感信息，请仅上传本账期的系统原导出文件。
