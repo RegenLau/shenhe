@@ -1802,12 +1802,7 @@ function createMonthlySettlementOrder({
     id: monthlySettlementAuditLogs.length + 1,
     action: settlementType === 'manual' ? 'manual_created' : 'order_created',
     order_id: order.id,
-    operator:
-      settlementType === 'legacy'
-        ? '历史数据迁移'
-        : settlementType === 'manual'
-          ? '运营管理员'
-          : '系统月结任务',
+    operator: settlementType === 'manual' ? '运营管理员' : '系统月结任务',
     remark: manualReason,
     create_time: generatedAt
   })
@@ -1815,69 +1810,6 @@ function createMonthlySettlementOrder({
 }
 
 function initializeMonthlySettlementState() {
-  const ledgerByTask = new Map()
-  pointLedger.forEach((item) => {
-    const rows = ledgerByTask.get(item.task_id) || []
-    rows.push(item)
-    ledgerByTask.set(item.task_id, rows)
-  })
-  ledgerByTask.forEach((rows) => {
-    rows.sort(
-      (left, right) =>
-        String(left.earned_at).localeCompare(String(right.earned_at)) ||
-        left.id - right.id
-    )
-  })
-
-  const consumedByTask = new Map()
-  withdrawals
-    .slice()
-    .sort(
-      (left, right) =>
-        String(left.apply_time).localeCompare(String(right.apply_time)) ||
-        Number(left.id) - Number(right.id)
-    )
-    .forEach((withdrawal) => {
-      const taskId = Number(withdrawal.source_task_id)
-      const count = Math.max(Number(withdrawal.source_review_count) || 0, 0)
-      const offset = consumedByTask.get(taskId) || 0
-      const selected = (ledgerByTask.get(taskId) || []).slice(offset, offset + count)
-      consumedByTask.set(taskId, offset + count)
-
-      if (!['exported', 'settled'].includes(withdrawal.settlement_status)) return
-      const settlementMonth =
-        selected.map((item) => item.source_month).sort().at(-1) ||
-        String(withdrawal.apply_time || '').slice(0, 7)
-      const cycle = ensureMonthlySettlementCycle(
-        settlementMonth,
-        settlementCycleGeneratedAt(settlementMonth)
-      )
-      const status = withdrawal.settlement_status === 'settled' ? 'paid' : 'exported'
-      createMonthlySettlementOrder({
-        cycle,
-        doctorId: withdrawal.doctor_id,
-        ledgerRows: selected,
-        settlementType: 'legacy',
-        generatedAt: withdrawal.apply_time,
-        cutoffAt: withdrawal.apply_time,
-        settlementNo: withdrawal.withdrawal_no,
-        initialStatus: status,
-        exportedAt: withdrawal.export_time,
-        paidAt: withdrawal.settled_time || null,
-        paymentSnapshot: {
-          status: 'complete',
-          doctor_id: withdrawal.doctor_id,
-          payee_name: withdrawal.doctor_name,
-          id_card_no: withdrawal.id_card_no,
-          id_card_masked: maskIdCard(withdrawal.id_card_no),
-          bank_name: withdrawal.bank_name,
-          bank_card_no: withdrawal.bank_card_no,
-          bank_card_masked: maskBankCard(withdrawal.bank_card_no),
-          source: 'legacy'
-        }
-      })
-    })
-
   const initialMonth = latestLedgerMonth()
   if (initialMonth) {
     const executedAt = settlementCycleGeneratedAt(initialMonth)
@@ -1996,7 +1928,7 @@ function recordMonthlySettlementJob({
       : noSettleablePoints
         ? '当前账期没有可结算积分，未生成月结记录'
         : createdCount > 0
-          ? `已生成 ${createdCount} 张医生结算单`
+          ? `本次纳入 ${createdCount} 位医生`
           : '月结任务已执行，无需重复生成',
     executed_at: executedAt
   }
@@ -2365,7 +2297,7 @@ function syncMonthlySettlementWorkbench() {
   const todo = {
     id: 'withdrawal_pending',
     title: '月结事项待处理',
-    description: `${summary.pending_export_count} 张结算单待导出，${summary.deferred_doctor_count} 位医生因条件未完成而延期。`,
+    description: `${summary.pending_export_count} 位医生待导出，${summary.deferred_doctor_count} 位医生因条件未完成而延期。`,
     count: pendingCount,
     level: summary.deferred_doctor_count > 0 ? 'warning' : 'info'
   }
@@ -2670,9 +2602,7 @@ async function buildMonthlySettlementExportFiles(orders = [], exportNo = '') {
       settlement_type:
         order.settlement_type === 'manual'
           ? '人工结算'
-          : order.settlement_type === 'legacy'
-            ? '历史结算'
-            : '系统月结',
+          : '系统月结',
       doctor_name: doctor?.name || '',
       doctor_phone: doctor?.phone || '',
       id_card_no: paymentSnapshot.id_card_no,
@@ -5070,7 +5000,7 @@ app.post('/core/product/settlement/cycle/run', (req, res) => {
         job
       },
       result.created_count > 0
-        ? `已生成 ${result.created_count} 张医生结算单`
+        ? `本次纳入 ${result.created_count} 位医生`
         : '月结任务已执行，无需重复生成'
     )
   )

@@ -181,7 +181,6 @@ const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
 const formatPoints = (value) => `${formatNumber(Number(value || 0) / 100)} 积分`
 const settlementTypeLabel = (value) => {
   if (value === 'manual') return '人工特批'
-  if (value === 'legacy') return '历史结算'
   return '系统月结'
 }
 const formatAnswer = (value) => {

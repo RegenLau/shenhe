@@ -73,7 +73,7 @@
         "path": "/product/withdrawal",
         "component": "product/withdrawal/index",
         "meta": {
-          "title": "月结管理",
+          "title": "结算管理",
           "icon": "icon-export",
           "type": "M"
         }

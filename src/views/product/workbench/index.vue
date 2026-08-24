@@ -230,7 +230,7 @@
         <a-col :xs="24" :xl="9">
           <a-card :bordered="false" class="section-card" title="积分月结">
             <template #extra>
-              <a-link @click="goTo('/product/withdrawal')">月结管理</a-link>
+              <a-link @click="goTo('/product/withdrawal')">结算管理</a-link>
             </template>
 
             <ul class="settlement-list">

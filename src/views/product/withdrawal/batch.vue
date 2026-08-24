@@ -4,7 +4,7 @@
       <div class="header-main">
         <a-button @click="goBack">
           <template #icon><icon-left /></template>
-          返回月结管理
+          返回结算管理
         </a-button>
         <div class="header-title">
           <h1>{{ cycle.display_title || '月结账期详情' }}</h1>
@@ -339,7 +339,6 @@ const formatNumber = (value) => Number(value || 0).toLocaleString('zh-CN')
 const formatPoints = (value) => `${formatNumber(Number(value || 0) / 100)} 积分`
 const settlementTypeLabel = (value) => {
   if (value === 'manual') return '人工结算'
-  if (value === 'legacy') return '历史结算'
   return '系统月结'
 }
 const isExportable = (record) =>

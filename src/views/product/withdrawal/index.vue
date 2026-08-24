@@ -2,7 +2,7 @@
   <div class="settlement-page">
     <header class="page-header">
       <div>
-        <h1>月结管理</h1>
+        <h1>结算管理</h1>
         <p>统一查看月结账期、任务执行结果和独立人工结算记录</p>
       </div>
       <a-button type="primary" status="warning" @click="manualSettlementRef?.open()">
@@ -12,7 +12,7 @@
     </header>
 
     <a-alert type="info" show-icon>
-      月结账期与对应任务执行结果合并为一行；人工结算单作为独立记录在同表展示，但不计入任何月结账期的医生数、单据数或金额。
+      月结账期与对应任务执行结果合并为一行；人工结算单作为独立记录在同表展示，但不计入任何月结账期的医生人数或金额统计。
     </a-alert>
 
     <a-alert v-if="summaryError" type="error" show-icon>
@@ -32,7 +32,7 @@
         <article class="metric-card">
           <span>月结待导出</span>
           <strong>{{ summaryLoaded ? formatPoints(summary.pending_export_amount_cent) : '—' }}</strong>
-          <small>{{ formatNumber(summary.pending_export_count) }} 张医生结算单</small>
+          <small>{{ formatNumber(summary.pending_export_count) }} 位医生待导出</small>
         </article>
         <article class="metric-card">
           <span>月结延期</span>
@@ -42,12 +42,12 @@
         <article class="metric-card">
           <span>月结待到账</span>
           <strong>{{ summaryLoaded ? formatPoints(summary.processing_amount_cent) : '—' }}</strong>
-          <small>{{ formatNumber(summary.processing_count) }} 张结算单</small>
+          <small>{{ formatNumber(summary.processing_count) }} 位医生待到账</small>
         </article>
         <article class="metric-card">
           <span>月结已到账</span>
           <strong>{{ summaryLoaded ? formatPoints(summary.paid_amount_cent) : '—' }}</strong>
-          <small>{{ formatNumber(summary.paid_count) }} 张结算单</small>
+          <small>{{ formatNumber(summary.paid_count) }} 位医生已到账</small>
         </article>
       </section>
     </a-spin>
@@ -126,7 +126,7 @@
         </div>
         <div v-else class="record-doctor">
           <strong>{{ formatNumber(record.doctor_count) }} 位医生</strong>
-          <span>{{ formatNumber(record.order_count) }} 张结算单</span>
+          <span>{{ formatNumber(record.order_count) }} 位已纳入结算</span>
         </div>
       </template>
 
@@ -148,7 +148,7 @@
 
       <template #pending_export_amount_cent="{ record }">
         <strong>{{ formatPoints(record.pending_export_amount_cent) }}</strong>
-        <small>{{ formatNumber(record.pending_export_count) }} 张</small>
+        <small>{{ formatNumber(record.pending_export_count) }} 位</small>
       </template>
 
       <template #deferred_amount_cent="{ record }">
@@ -159,13 +159,13 @@
       <template #processing_amount_cent="{ record }">
         <strong>{{ formatPoints(record.processing_amount_cent) }}</strong>
         <small>
-          {{ formatNumber(record.exported_count + record.payment_failed_count) }} 张
+          {{ formatNumber(record.exported_count + record.payment_failed_count) }} 位
         </small>
       </template>
 
       <template #paid_amount_cent="{ record }">
         <strong>{{ formatPoints(record.paid_amount_cent) }}</strong>
-        <small>{{ formatNumber(record.paid_count) }} 张</small>
+        <small>{{ formatNumber(record.paid_count) }} 位</small>
       </template>
 
       <template #operationCell="{ record }">
@@ -337,7 +337,7 @@ const columns = reactive([
   { title: '账期 / 结算记录', dataIndex: 'settlement_month', width: 215, fixed: 'left' },
   { title: '记录类型', dataIndex: 'record_type', width: 105, align: 'center' },
   { title: '状态', dataIndex: 'status', width: 110, align: 'center' },
-  { title: '医生 / 单据', dataIndex: 'doctor_count', width: 170 },
+  { title: '医生', dataIndex: 'doctor_count', width: 170 },
   { title: '执行结果', dataIndex: 'execution_result', width: 310 },
   {
     title: '待导出',

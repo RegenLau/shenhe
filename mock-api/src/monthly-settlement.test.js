@@ -55,6 +55,12 @@ test('月结全链路：零积分跳过、人工特批、双表导出与到账�
   const initialCycle = initialCycleResponse.data
   assert.ok(initialCycle.order_count > 0)
   assert.ok(initialCycle.doctor_settlements.every((order) => order.amount_cent > 0))
+  assert.ok(
+    initialCycle.doctor_settlements.every(
+      (order) => order.settlement_type === 'auto'
+    ),
+    '月结账期内只能生成系统月结记录，不得包含历史结算数据'
+  )
   assert.doesNotMatch(
     JSON.stringify(initialCycle.doctor_settlements),
     /"(?:id_card_no|bank_card_no)"/,
@@ -167,6 +173,7 @@ test('月结全链路：零积分跳过、人工特批、双表导出与到账�
   )
   assert.ok(monthlyHistory)
   assert.ok(monthlyHistory.job_no)
+  assert.match(monthlyHistory.result_message, /本次纳入 \d+ 位医生/)
   assert.equal(monthlyHistory.order_count, initialCycle.order_count)
   assert.ok(manualHistory)
   assert.equal(manualHistory.cycle_id, null)
