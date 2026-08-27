@@ -110,10 +110,14 @@
         <span class="money-text">{{ formatPoints(record.unsettled_reward_cent) }}</span>
       </template>
 
+      <template #operationAfterExtend="{ record }">
+        <a-link @click="openPaymentAccount(record)">收款信息</a-link>
+      </template>
     </sa-table>
 
     <doctor-detail ref="detailRef" @updated="refresh" />
     <doctor-edit ref="editRef" @success="refresh" />
+    <payment-account ref="paymentAccountRef" @success="refresh" />
   </div>
 </template>
 
@@ -124,10 +128,12 @@ import tool from '@/utils/tool'
 import doctorApi from '@/api/product/doctor'
 import DoctorDetail from './view.vue'
 import DoctorEdit from './edit.vue'
+import PaymentAccount from '../withdrawal/payment-account.vue'
 
 const crudRef = ref()
 const detailRef = ref()
 const editRef = ref()
+const paymentAccountRef = ref()
 const tableError = ref('')
 const exporting = ref(false)
 
@@ -206,7 +212,7 @@ const options = reactive({
   api: loadList,
   pageLayout: 'normal',
   showSort: false,
-  operationColumnWidth: 80,
+  operationColumnWidth: 170,
   view: {
     show: true,
     text: '详情',
@@ -258,6 +264,12 @@ const columns = reactive([
 ])
 
 const refresh = () => crudRef.value?.refresh()
+const openPaymentAccount = (record) => {
+  paymentAccountRef.value?.open({
+    doctor_id: record.id,
+    doctor_name: record.name
+  })
+}
 const resetSearchForm = () => {
   Object.assign(searchForm.value, {
     keyword: '',

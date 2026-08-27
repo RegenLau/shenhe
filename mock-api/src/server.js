@@ -5026,15 +5026,21 @@ app.put('/core/product/settlement/paymentAccount', (req, res) => {
   const doctorId = Number(req.body?.doctor_id)
   const doctor = doctors.find((item) => item.id === doctorId)
   const payeeName = String(req.body?.payee_name || '').trim()
-  const idCardNo = String(req.body?.id_card_no || '').trim()
   const bankName = String(req.body?.bank_name || '').trim()
-  const bankCardNo = String(req.body?.bank_card_no || '').replaceAll(' ', '')
+  const bankLocation = String(req.body?.bank_location || '').trim()
   const confirmed = req.body?.confirmed === true
 
   if (!doctor) {
     res.json(failure(404, '未找到对应医生'))
     return
   }
+  const current = getDoctorPaymentAccount(doctor.id)
+  const idCardNo =
+    String(req.body?.id_card_no || '').trim() || current?.id_card_no || ''
+  const bankCardNo =
+    String(req.body?.bank_card_no || '').replaceAll(' ', '') ||
+    current?.bank_card_no ||
+    ''
   if (!payeeName || payeeName.length > 50) {
     res.json(failure(422, '请输入不超过 50 个字符的收款人姓名'))
     return
@@ -5047,17 +5053,20 @@ app.put('/core/product/settlement/paymentAccount', (req, res) => {
     res.json(failure(422, '请输入不超过 100 个字符的开户行'))
     return
   }
+  if (!bankLocation || bankLocation.length > 100) {
+    res.json(failure(422, '请输入不超过 100 个字符的开户地'))
+    return
+  }
   if (!/^\d{16,19}$/.test(bankCardNo)) {
     res.json(failure(422, '请输入 16 至 19 位银行卡号'))
     return
   }
   if (!confirmed) {
-    res.json(failure(422, '请确认已核对收款人、身份证号和银行卡信息'))
+    res.json(failure(422, '请确认已核对全部收款信息'))
     return
   }
 
   const now = formatDateTime()
-  const current = getDoctorPaymentAccount(doctor.id)
   const account = current || {
     id: doctor.id,
     doctor_id: doctor.id
@@ -5066,6 +5075,7 @@ app.put('/core/product/settlement/paymentAccount', (req, res) => {
     payee_name: payeeName,
     id_card_no: idCardNo.toUpperCase(),
     bank_name: bankName,
+    bank_location: bankLocation,
     bank_card_no: bankCardNo,
     status: 'complete',
     source: 'admin',
@@ -5090,7 +5100,7 @@ app.put('/core/product/settlement/paymentAccount', (req, res) => {
         doctor_name: doctor.name,
         account: toPublicPaymentAccount(account)
       },
-      '收款信息已补录并确认'
+      '收款信息已保存并确认'
     )
   )
 })

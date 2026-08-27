@@ -90,6 +90,7 @@
             <a-descriptions-item label="收款人">{{ detail.payment_account?.payee_name || '—' }}</a-descriptions-item>
             <a-descriptions-item label="身份证号">{{ detail.payment_account?.id_card_masked || '—' }}</a-descriptions-item>
             <a-descriptions-item label="开户行">{{ detail.payment_account?.bank_name || '—' }}</a-descriptions-item>
+            <a-descriptions-item label="开户地">{{ detail.payment_account?.bank_location || '—' }}</a-descriptions-item>
             <a-descriptions-item label="银行卡号">{{ detail.payment_account?.bank_card_masked || '—' }}</a-descriptions-item>
           </a-descriptions>
         </section>

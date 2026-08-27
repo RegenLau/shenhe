@@ -67,6 +67,58 @@ test('月结全链路：零积分跳过、人工特批、双表导出与到账�
     '普通详情接口不得泄露完整身份证或银行卡号'
   )
 
+  const existingAccount = await api(
+    '/core/product/settlement/paymentAccount?doctor_id=1'
+  )
+  assert.equal(existingAccount.code, 200)
+  assert.equal(existingAccount.data.account.status, 'complete')
+  assert.equal(existingAccount.data.account.id_card_masked, '110101********2345')
+  assert.equal(existingAccount.data.account.bank_card_masked, '**** **** **** 4567')
+  assert.equal(existingAccount.data.account.bank_location, '北京市')
+  assert.equal('id_card_no' in existingAccount.data.account, false)
+  assert.equal('bank_card_no' in existingAccount.data.account, false)
+
+  const updatedAccount = await api('/core/product/settlement/paymentAccount', {
+    method: 'PUT',
+    body: JSON.stringify({
+      doctor_id: 1,
+      payee_name: existingAccount.data.account.payee_name,
+      id_card_no: '',
+      bank_name: '中国银行北京运营中心支行',
+      bank_location: '北京市朝阳区',
+      bank_card_no: '',
+      confirmed: true
+    })
+  })
+  assert.equal(updatedAccount.code, 200)
+  assert.equal(updatedAccount.data.account.status, 'complete')
+  assert.equal(updatedAccount.data.account.bank_name, '中国银行北京运营中心支行')
+  assert.equal(updatedAccount.data.account.bank_location, '北京市朝阳区')
+  assert.equal(
+    updatedAccount.data.account.bank_card_masked,
+    existingAccount.data.account.bank_card_masked,
+    '编辑已有账户时，敏感号码留空必须保留原值'
+  )
+
+  const createdAccount = await api('/core/product/settlement/paymentAccount', {
+    method: 'PUT',
+    body: JSON.stringify({
+      doctor_id: 2,
+      payee_name: '李静',
+      id_card_no: '110101199001010028',
+      bank_name: '中国工商银行北京朝阳支行',
+      bank_location: '北京市朝阳区',
+      bank_card_no: '6222020202020202020',
+      confirmed: true
+    })
+  })
+  assert.equal(createdAccount.code, 200)
+  assert.equal(createdAccount.data.account.status, 'complete')
+  assert.equal(createdAccount.data.account.bank_location, '北京市朝阳区')
+  const doctorAfterAccountSave = await api('/core/product/doctor/read?id=2')
+  assert.equal(doctorAfterAccountSave.code, 200)
+  assert.equal(doctorAfterAccountSave.data.payment_account_status, 'complete')
+
   const zeroMonth = await api('/core/product/settlement/cycle/run', {
     method: 'POST',
     body: JSON.stringify({ month: '2026-06' })
